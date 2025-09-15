@@ -1,0 +1,13 @@
+{
+    "compileOnSave": true,
+    "compilerOptions": {
+        "strict": true,
+        "esModuleInterop": true,
+        "module": "commonjs",
+        "outDir": "./dist",
+        "skipLibCheck": true
+    },
+    "include": [
+        "./**/*"
+    ]
+}
