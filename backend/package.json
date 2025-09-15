@@ -1,32 +1,32 @@
 {
-  "name": "tabelas-futvoli",
-  "version": "1.0.0",
-  "description": "Sistema para gerenciamento de tabelas futvolei",
-  "homepage": "https://github.com/DuckCoder1101/Tabelas-Futvolei#readme",
-  "bugs": {
-    "url": "https://github.com/DuckCoder1101/Tabelas-Futvolei/issues"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/DuckCoder1101/Tabelas-Futvolei.git"
-  },
-  "license": "Apache-2.0",
-  "author": "Crisian Fava e Renato Alves",
-  "type": "commonjs",
-  "main": "dist/src/index.js",
-  "scripts": {
-    "build": "tsc --project ./tsconfig.json & npm run dev",
-    "dev": "node ./build/src/index.js"
-  },
-  "dependencies": {
-    "@types/cors": "^2.8.19",
-    "@types/dotenv": "^6.1.1",
-    "@types/express": "^5.0.3",
-    "@types/express-session": "^1.18.2",
-    "bcrypt": "^6.0.0",
-    "cors": "^2.8.5",
-    "dotenv": "^17.2.2",
-    "express": "^5.1.0",
-    "express-session": "^1.18.2"
-  }
+	"name": "tabelas-futvolei",
+	"version": "1.0.0",
+	"description": "Sistema para gerenciamento de tabelas futvolei",
+	"homepage": "https://github.com/DuckCoder1101/Tabelas-Futvolei#readme",
+	"bugs": {
+		"url": "https://github.com/DuckCoder1101/Tabelas-Futvolei/issues"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/DuckCoder1101/Tabelas-Futvolei.git"
+	},
+	"license": "Apache-2.0",
+	"author": "Crisian Fava e Renato Alves",
+	"type": "commonjs",
+	"main": "dist/index.js",
+	"scripts": {
+		"build": "tsc --project ./tsconfig.json & npm run dev",
+		"dev": "node ./dist/index.js"
+	},
+	"dependencies": {
+		"@types/cors": "^2.8.19",
+		"@types/dotenv": "^6.1.1",
+		"@types/express": "^5.0.3",
+		"@types/express-session": "^1.18.2",
+		"bcrypt": "^6.0.0",
+		"cors": "^2.8.5",
+		"dotenv": "^17.2.2",
+		"express": "^5.1.0",
+		"express-session": "^1.18.2"
+	}
 }
