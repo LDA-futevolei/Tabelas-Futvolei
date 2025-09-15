@@ -1,13 +1,21 @@
 {
+    "extends": "@tsconfig/node16/tsconfig.json",
     "compileOnSave": true,
     "compilerOptions": {
         "strict": true,
         "esModuleInterop": true,
         "module": "commonjs",
-        "outDir": "./dist",
-        "skipLibCheck": true
+        "skipLibCheck": true,
+        "typeRoots": [
+            "./src/types",
+            "./node_modules/@types"
+        ],
+        "baseUrl": "./src",
+        "paths": {
+            "@/*": ["*"]
+        }
     },
     "include": [
-        "./**/*"
+        "./src/**/*"
     ]
 }

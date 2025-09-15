@@ -15,10 +15,11 @@
 	"type": "commonjs",
 	"main": "dist/index.js",
 	"scripts": {
-		"build": "tsc --project ./tsconfig.json & npm run dev",
-		"dev": "node ./dist/index.js"
+		"start": "ts-node -r tsconfig-paths/register src/index.ts"
 	},
 	"dependencies": {
+		"@prisma/client": "^6.16.1",
+		"@types/bcrypt": "^6.0.0",
 		"@types/cors": "^2.8.19",
 		"@types/dotenv": "^6.1.1",
 		"@types/express": "^5.0.3",
@@ -27,6 +28,12 @@
 		"cors": "^2.8.5",
 		"dotenv": "^17.2.2",
 		"express": "^5.1.0",
-		"express-session": "^1.18.2"
+		"express-session": "^1.18.2",
+		"ts-node": "^10.9.2",
+		"tsconfig-paths": "^4.2.0"
+	},
+	"devDependencies": {
+		"@tsconfig/recommended": "^1.0.10",
+		"prisma": "^6.16.1"
 	}
 }

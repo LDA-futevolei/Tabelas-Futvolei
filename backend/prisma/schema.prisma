@@ -13,10 +13,10 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Usuario {
+model users {
   idUsuario Int     @id @default(autoincrement())
   nome      String  @db.VarChar(30)
-  email     String  @db.VarChar(255)
+  email     String  @db.VarChar(255) @unique
   senha     String  @db.VarChar(255)
   isAdmin   Boolean
 }

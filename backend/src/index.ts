@@ -4,6 +4,8 @@ import dotenv from 'dotenv'
 import path from 'path'
 import cors from 'cors'
 
+import { UserRouter } from '@/routes/user'
+
 async function main() {
     dotenv.config();
     const app = express();
@@ -25,16 +27,21 @@ async function main() {
     // SESSÃO
     app.use(session({
         secret: SECRET,
-        name: "Liga dos Amigos",
+        name: "liga-dos-amigos",
         saveUninitialized: false,
         resave: false,
         cookie: {
-		    httpOnly: true,
+            maxAge: 1000 * 60 * 60 * 2,
 		    secure: false,
+		    httpOnly: true,
             sameSite: 'lax',
-            maxAge: 1000 * 60 * 60 * 2
 	    },
     }));
+
+    // ROTAS
+
+    // ---- ROTAS DO USUÁRIO ----
+    app.use('/user', UserRouter);
 
     app.listen(PORT, (error) => {
         if (error != null) {

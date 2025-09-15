@@ -13,4 +13,4 @@ export interface UserLoginDTO {
 
 export interface UserCadDTO extends Omit<User, "idUsuario"> {}
 
-export interface UserProfile extends Omit<User, "senha"> {}
+export interface UserProfileDTO extends Omit<User, 'senha'> {}
