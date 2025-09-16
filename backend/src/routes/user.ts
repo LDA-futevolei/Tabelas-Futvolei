@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
 
 import { UserCadDTO, UserLoginDTO } from '@/types/user';
+import IsAdmin from '@/middlewares/IsAdmin';
+import IsAuth from '@/middlewares/IsAuth';
 import UserModel from '@/models/user';
 
 export const UserRouter = Router();
@@ -60,7 +62,7 @@ UserRouter.post('/login', async (req, res) => {
 	}
 });
 
-UserRouter.post('/register', async (req, res) => {
+UserRouter.post('/register', IsAdmin, async (req, res) => {
 	const body: UserCadDTO = req.body ?? { };
 	const errors = [];
 	
@@ -125,4 +127,25 @@ UserRouter.post('/register', async (req, res) => {
 			],
 		});
 	}
+});
+
+UserRouter.get('/logout', IsAuth, (req, res) => {
+	req.session.destroy((err) => {
+		if (err != null) {
+			return res.status(500).json({
+				errors: [
+					'Não foi possível efetuar o logout devido a um erro no servidor. Tente novamente mais tarde!',
+				]
+			});
+		}
+
+		res.clearCookie('session.liga');
+		res.sendStatus(200);
+	});
+});
+
+UserRouter.get('/profile', IsAuth, async (req, res) => {
+	res.status(200).json({
+		data: req.session.user
+	});
 });

@@ -1,0 +1,205 @@
+{
+	"openapi": "3.0.3",
+	"info": {
+		"title": "Liga dos amigos",
+		"description": "API liga de futvolei",
+		"version": "3.0.0"
+	},
+	"paths": {
+    "/user/login": {
+      "post": {
+        "description": "Efetua o login do usuário",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "email": {
+              "schema": {
+                "type": "string"
+              }
+            },
+            "senha": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Login efetuado com sucesso",
+            "headers": {
+              "Set-Cookie": {
+                "description": "Cookie de sessão",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Corpo do documento inválido ou com informações faltantes",
+            "content": {
+              "errors": {
+                "schema": {
+                  "type": "array"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Email ou senha inválidos",
+            "content": {
+              "errors": {
+                "schema": {
+                  "type": "array"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
+            "content": {
+              "errors": {
+                "schema": {
+                  "type": "array"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user/register": {
+      "description": "Cadastro de usuário",
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "nome": {
+              "schema": {
+                "type": "string"
+              }
+            },
+            "email": {
+              "schema": {
+                "type": "string"
+              }
+            },
+            "senha": {
+              "schema": {
+                "type": "string"
+              }
+            },
+            "isAdmin": {
+              "schema": {
+                "type": "boolean"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Usuário cadastrado com sucesso"
+          },
+          "400": {
+            "description": "Corpo do documento inválido ou com informações faltantes",
+            "content": {
+              "errors": {
+                "schema": {
+                  "type": "array"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Acesso negado: Login não efetuado",
+            "content": {
+              "errors": {
+                "schema": {
+                  "type": "array"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Acesso negado: Permissões insulficientes",
+            "content": {
+              "errors": {
+                "schema": {
+                  "type": "array"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
+            "content": {
+              "errors": {
+                "schema": {
+                  "type": "array"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user/logout": {
+      "description": "Encerrar sessão do usuário",
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Sessão encerrada com sucesso"
+          },
+          "401": {
+            "description": "Acesso negado: Login não efetuado",
+            "content": {
+              "errors": {
+                "schema": {
+                  "type": "array"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro interno do servidor",
+            "content": {
+              "errors": {
+                "schema": {
+                  "type": "array"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user/profile": {
+      "description": "Retorna o objeto perfil do usuário",
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Perfil retornado com sucesso",
+            "content": {
+              "data": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Acesso negado: Login não efetuado",
+            "content": {
+              "errors": {
+                "schema": {
+                  "type": "array"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

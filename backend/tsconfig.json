@@ -4,6 +4,7 @@
     "compilerOptions": {
         "strict": true,
         "esModuleInterop": true,
+        "resolveJsonModule": true,
         "module": "commonjs",
         "skipLibCheck": true,
         "typeRoots": [
