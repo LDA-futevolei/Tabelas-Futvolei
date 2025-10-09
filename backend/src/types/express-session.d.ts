@@ -1,4 +1,4 @@
-import 'express-session';
+import '@/types/express-session';
 import { UserProfile } from '../src/user';
 import User from '@/models/user';
 

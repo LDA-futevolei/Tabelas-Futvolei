@@ -9,27 +9,27 @@ import UserModel from '@/models/user';
 export const UserRouter = Router();
 
 UserRouter.post('/login', async (req, res) => {
-	const body: UserLoginDTO = req.body ?? { };
-	const errors = [];
-	
+	const body: UserLoginDTO = req.body ?? {};
+	const erros = [];
+
 	if (!body.email) {
-		errors.push('É necessário prover um email para continuar!');
+		erros.push('É necessário prover um email para continuar!');
 	}
-	
+
 	if (!body.senha) {
-		errors.push('É necessário prover uma senha para continuar!');
+		erros.push('É necessário prover uma senha para continuar!');
 	}
-	
+
 	// Checagem de erros de corpo
-	if (errors.length > 0) {
+	if (erros.length > 0) {
 		return res.status(400).json({
-			errors,
+			erros,
 		});
 	}
-	
+
 	try {
 		const client = new PrismaClient();
-		
+
 		// Verifica se existe um usuario com esse email
 		let user = await client.users.findUnique({
 			where: {
@@ -40,7 +40,7 @@ UserRouter.post('/login', async (req, res) => {
 		// Verifica se o usuário existe e se a senha é válida
 		if (!user || !UserModel.IsPasswordMatch(body.senha, user.senha)) {
 			return res.status(404).json({
-				errors: ['Email ou senha inválidos!'],
+				erros: ['Email ou senha inválidos!'],
 			});
 		}
 
@@ -63,35 +63,35 @@ UserRouter.post('/login', async (req, res) => {
 });
 
 UserRouter.post('/register', IsAdmin, async (req, res) => {
-	const body: UserCadDTO = req.body ?? { };
-	const errors = [];
-	
+	const body: UserCadDTO = req.body ?? {};
+	const erros = [];
+
 	if (!body.email) {
-		errors.push('É necessário prover um email!');
+		erros.push('É necessário prover um email!');
 	}
-	
+
 	if (!body.senha) {
-		errors.push('É necessário prover uma senha!');
+		erros.push('É necessário prover uma senha!');
 	}
 
 	if (!body.nome) {
-		errors.push('É necessário prover um nome!');
+		erros.push('É necessário prover um nome!');
 	}
 
 	if (body.isAdmin == undefined) {
 		body.isAdmin = false;
 	}
-	
+
 	// Checagem de erros de corpo
-	if (errors.length > 0) {
+	if (erros.length > 0) {
 		return res.status(400).json({
-			errors,
+			erros,
 		});
 	}
-	
+
 	try {
 		const client = new PrismaClient();
-		
+
 		// Verifica se existe um usuario com esse email
 		let user = await client.users.findUnique({
 			where: {
@@ -102,11 +102,11 @@ UserRouter.post('/register', IsAdmin, async (req, res) => {
 		// Verifica se o usuário existe e se a senha é válida
 		if (user != null) {
 			return res.status(404).json({
-				errors: ['Esse email já foi usado por outro usuário!'],
+				erros: ['Esse email já foi usado por outro usuário!'],
 			});
 		}
 
-		// Criptografa a senha 
+		// Criptografa a senha
 		const hash = UserModel.HashPassword(body.senha);
 
 		// Cadastra o usuário
@@ -115,8 +115,8 @@ UserRouter.post('/register', IsAdmin, async (req, res) => {
 				nome: body.nome,
 				email: body.email,
 				senha: hash,
-				isAdmin: body.isAdmin
-			}
+				isAdmin: body.isAdmin,
+			},
 		});
 
 		res.sendStatus(200);
@@ -133,7 +133,7 @@ UserRouter.get('/logout', IsAuth, (req, res) => {
 	req.session.destroy((err) => {
 		if (err != null) {
 			return res.status(500).json({
-				errors: [
+				erros: [
 					'Não foi possível efetuar o logout devido a um erro no servidor. Tente novamente mais tarde!',
 				]
 			});
