@@ -1,218 +1,171 @@
-import React, { useMemo } from "react";
-import { estruturaDouble16 } from "./utils/estruturaDouble16";
+import React, { useState, useMemo } from "react";
+import MatchCard from "./MatchCard";
+import RoundLabels from "./RoundLabels";
+import ModalPlacar from "./ModalPlacar";
+import { useBracketStore } from "../store/useBracketStore";
 
-// Ajustes visuais
-const CARD_W = 180;
-const CARD_H = 60;
-const MARGEM = 80;
-const TOPO = 40;
-const ESP_H = 180;  // distância entre colunas (rounds)
-const GAP_CENTRO = 240; // espaço entre upper e lower (no meio)
+
+const COLUMN_WIDTH = 260;
+const ROW_HEIGHT = 64;
+const TOP_PADDING = 40;
+const BOTTOM_START = 520;
 
 export default function BracketSVG() {
-  // Calcula posições com base no grafo (winner/loser) da estrutura
-  const { nodes, largura, altura } = useMemo(() => calcularPosicoes(), []);
+  const jogos = useBracketStore((s) => s.jogos || []);
+  const duplas = useBracketStore((s) => s.duplas || []);
+  const participants = useBracketStore((s) => s.participants || []);
+  const setPlacar = useBracketStore((s) => s.setPlacar);
+  const initDuplas = useBracketStore((s) => s.initDuplas);
+  const gerarClassificatoria = useBracketStore((s) => s.gerarClassificatoria);
+  const [modalJogo, setModalJogo] = useState(null);
+  const [showInit, setShowInit] = useState(false);
+  const [qtd, setQtd] = useState(16);
 
-  // Drag (estilo Challonge)
-  const onMouseDown = (e) => {
-    const el = e.currentTarget;
-    let sx = e.clientX;
-    let sy = e.clientY;
-    const sl = el.scrollLeft;
-    const st = el.scrollTop;
-    const move = (ev) => {
-      el.scrollLeft = sl - (ev.clientX - sx);
-      el.scrollTop = st - (ev.clientY - sy);
-    };
-    const up = () => {
-      window.removeEventListener("mousemove", move);
-      window.removeEventListener("mouseup", up);
-    };
-    window.addEventListener("mousemove", move);
-    window.addEventListener("mouseup", up);
+  const grouped = useMemo(() => {
+    const map = { upper: new Map(), lower: new Map(), finais: new Map(), other: new Map() };
+    jogos.forEach(j => {
+      const key = j.tipo === 'upper' ? 'upper' : (j.tipo === 'lower' ? 'lower' : (j.fase === 'finais' ? 'finais' : 'other'));
+      const rounds = map[key];
+      const r = j.round ?? 0;
+      if (!rounds.has(r)) rounds.set(r, []);
+      rounds.get(r).push(j);
+    });
+    return map;
+  }, [jogos]);
+
+  const jogosMap = useMemo(() => new Map((jogos || []).map(j => [j.id, j])), [jogos]);
+
+  const resolveFontesToAB = (jogo) => {
+    // return a shallow copy with a/b filled where possible using jogosMap
+    if (!jogo || !jogo.fontes || jogo.fontes.length === 0) return jogo
+    const resolved = { ...jogo }
+    const vals = []
+    for (const f of jogo.fontes) {
+      if (!f) continue
+      if (f.type === 'seed' && typeof f.id !== 'undefined') vals.push(f.id)
+      else if (f.type === 'from' && f.ref) {
+        const src = jogosMap.get(f.ref)
+        if (!src) continue
+        if (f.path === 'vencedor' && src.vencedor != null) vals.push(src.vencedor)
+        else if (f.path === 'perdedor' && src.vencedor != null) {
+          // infer perdedor when vencedor known
+          const p = (src.a === src.vencedor) ? src.b : src.a
+          vals.push(p)
+        }
+      }
+    }
+    resolved.a = typeof vals[0] !== 'undefined' ? vals[0] : resolved.a
+    resolved.b = typeof vals[1] !== 'undefined' ? vals[1] : resolved.b
+    return resolved
+  }
+
+  // dev helper: detect visible duplicates (a or b appearing more than once across visible upper matches)
+  useMemo(() => {
+    try {
+      const visible = (jogos || []).filter(j => j.tipo === 'upper' && !j.skipRender)
+      const occ = new Map()
+      visible.forEach(j => {
+        if (j.a != null) occ.set(j.a, (occ.get(j.a)||0)+1)
+        if (j.b != null) occ.set(j.b, (occ.get(j.b)||0)+1)
+      })
+      const dupes = Array.from(occ.entries()).filter(([id, cnt]) => cnt > 1)
+      if (dupes.length > 0) {
+        console.warn('[BracketSVG] duplicate visible seed occurrences detected', { dupes, visible })
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [jogos]);
+
+  
+  const orderMatches = (matches) => {
+    return matches.slice().sort((a, b) => {
+      const aSeed = (a.fontes && a.fontes.find(f => f.type === 'seed')?.id) ?? (typeof a.a === 'number' ? a.a : Number.POSITIVE_INFINITY);
+      const bSeed = (b.fontes && b.fontes.find(f => f.type === 'seed')?.id) ?? (typeof b.a === 'number' ? b.a : Number.POSITIVE_INFINITY);
+      return (aSeed || 0) - (bSeed || 0) || (a.id - b.id);
+    });
   };
+
+  const renderUpper = () => {
+    const rounds = Array.from(grouped.upper.keys()).sort((a,b) => a - b);
+
+  const positionsByRound = [] 
+
+    rounds.forEach((roundIndex, colIndex) => {
+      const rawMatches = grouped.upper.get(roundIndex) || []
+      const matches = orderMatches(rawMatches.filter(m => !m.skipRender))
+      const columnHeight = matches.length * ROW_HEIGHT
+      const startY = TOP_PADDING + Math.max(0, (maxUpperRows * ROW_HEIGHT - columnHeight) / 2)
+
+      if (colIndex === 0) {
+        
+        positionsByRound[colIndex] = matches.map((jogo, i) => ({ id: jogo.id, jogo, x: colIndex * COLUMN_WIDTH, y: startY + i * ROW_HEIGHT }))
+      } else {
+        
+        const prev = positionsByRound[colIndex - 1] || []
+        positionsByRound[colIndex] = matches.map((jogo, i) => {
+          
+          const srcA = prev[2 * i]
+          const srcB = prev[2 * i + 1]
+          const yA = srcA ? srcA.y : (startY + (2 * i) * ROW_HEIGHT)
+          const yB = srcB ? srcB.y : (startY + (2 * i + 1) * ROW_HEIGHT)
+          const y = (yA + yB) / 2
+          return { id: jogo.id, jogo, x: colIndex * COLUMN_WIDTH, y }
+        })
+      }
+    })
+
+    const sourceDuplas = (participants && participants.length > 0) ? participants : duplas
+    return positionsByRound.flatMap(col => col.map(pos => {
+      const jogoForRender = resolveFontesToAB(pos.jogo)
+      return (
+        <MatchCard key={pos.id} jogo={jogoForRender} jogos={jogos} x={pos.x} y={pos.y} onClick={() => setModalJogo(pos.jogo)} duplas={sourceDuplas} />
+      )
+    }))
+  };
+  
+  const labelsUpper = Array.from(grouped.upper.keys()).sort((a,b) => a - b).map(r => `Upper R${r}`);
+
+  
+  const upperRounds = Array.from(grouped.upper.keys()).sort((a,b) => a - b);
+  const maxUpperRows = upperRounds.reduce((mx, r) => Math.max(mx, (grouped.upper.get(r) || []).length), 0);
+  const colsUpper = Math.max(1, upperRounds.length);
+  const totalCols = colsUpper;
+  const svgWidth = Math.max(800, totalCols * COLUMN_WIDTH + 200);
+  const svgHeight = Math.max(400, TOP_PADDING + maxUpperRows * ROW_HEIGHT + 200);
 
   return (
-    <div
-  onMouseDown={onMouseDown}
-  className="w-full h-screen bg-black overflow-hidden select-none cursor-grab active:cursor-grabbing"
-  style={{ userSelect: "none" }}
->
-      <svg width={largura} height={altura} viewBox={`0 0 ${largura} ${altura}`}>
-        {nodes.map((n) => (
-          <g key={n.id}>
-            <rect
-              x={n.x}
-              y={n.y}
-              width={CARD_W}
-              height={CARD_H}
-              rx="12"
-              ry="12"
-              fill="#111"
-              stroke="#ec4899"
-              strokeWidth="2"
-            />
-            <text
-              x={n.x + CARD_W / 2}
-              y={n.y + 20}
-              textAnchor="middle"
-              fill="#ec4899"
-              fontSize="12"
-            >
-              {`Jogo ${n.id}`}
-            </text>
-            <text
-              x={n.x + 10}
-              y={n.y + 38}
-              fill="#fff"
-              fontSize="11"
-            >
-              {formatDupla(n.duplaA)}
-            </text>
-            <text
-              x={n.x + 10}
-              y={n.y + 53}
-              fill="#fff"
-              fontSize="11"
-            >
-              {formatDupla(n.duplaB)}
-            </text>
-          </g>
-        ))}
+    
+    <div className="w-full p-4 bg-neutral-900 overflow-auto min-h-screen">
+      
+
+      
+      {showInit && (
+        <div className="fixed inset-0 flex items-center justify-center z-50">
+          <div className="bg-neutral-800 text-white p-6 rounded shadow-lg w-80">
+            <h3 className="text-lg font-bold mb-2">Quantos participantes você quer?</h3>
+            <input type="number" className="w-full p-2 rounded bg-gray-700 mb-3" value={qtd} onChange={e => setQtd(Number(e.target.value || 0))} />
+            <div className="flex justify-end gap-2">
+              <button className="px-3 py-1 bg-gray-700 rounded" onClick={() => setShowInit(false)}>Cancelar</button>
+              <button className="px-3 py-1 bg-pink-600 rounded" onClick={() => { initDuplas(qtd); gerarClassificatoria(); setShowInit(false); }}>Gerar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+  <svg className="bracket-svg block mx-auto" width={svgWidth} height={svgHeight} viewBox={`0 0 ${svgWidth} ${svgHeight}`}>
+  <RoundLabels rounds={labelsUpper} y={0} />
+
+  {renderUpper()}
       </svg>
+
+      {modalJogo && (
+        <ModalPlacar
+          jogo={modalJogo}
+          onClose={() => setModalJogo(null)}
+          onSave={(id, payload) => setPlacar(id, payload)}
+        />
+      )}
     </div>
   );
-}
-
-/** ===== LÓGICA DE POSICIONAMENTO ===== */
-function calcularPosicoes() {
-  // Índices upper/lower conforme estrutura que montamos antes
-  const upperIds = new Set([1,2,3,4,5,6,7,8,13,14,15,16,21,22,27,29]);
-  const lowerIds = new Set([9,10,11,12,17,18,19,20,23,24,25,28]);
-
-  // Mapa por id
-  const byId = new Map(estruturaDouble16.map(j => [j.id, j]));
-
-  // Rodadas máximas de cada lado
-  const roundsUpper = Math.max(...[...upperIds].map(id => byId.get(id)?.rodada || 1));
-  const roundsLower = Math.max(...[...lowerIds].map(id => byId.get(id)?.rodada || 1));
-
-  // Largura total (left upper + gap + right lower)
-  const larguraUpper = MARGEM + CARD_W + (roundsUpper - 1) * ESP_H;
-  const larguraLower = CARD_W + (roundsLower - 1) * ESP_H + MARGEM;
-  const larguraTotal = larguraUpper + GAP_CENTRO + larguraLower;
-
-  // Caches de Y e X
-  const yCache = new Map();
-  const xCache = new Map();
-
-  // Helpers
-  const getRodada = (id) => byId.get(id).rodada;
-
-  const getX = (id) => {
-    if (xCache.has(id)) return xCache.get(id);
-    const rodada = getRodada(id);
-
-    let x;
-    if (upperIds.has(id)) {
-      // Upper: da esquerda para o centro
-      x = MARGEM + (rodada - 1) * ESP_H;
-    } else {
-      // Lower: da direita para o centro (espelhado)
-      const offset = (rodada - 1) * ESP_H;
-      x = larguraTotal - (MARGEM + CARD_W + offset);
-    }
-    xCache.set(id, x);
-    return x;
-  };
-
-  // Extrai referências "Vencedor Jogo N" / "Perdedor Jogo N"
-  const refId = (val) => {
-    if (typeof val !== "string") return null;
-    const m = val.match(/Jogo\s+(\d+)/i);
-    return m ? Number(m[1]) : null;
-  };
-
-  // Y da rodada 1 (upper): distribui 8 jogos igualmente
-  const getYUpperRound1 = (id) => {
-    // IDs 1..8
-    const idx = id - 1; // 0..7
-    return TOPO + idx * 2 * CARD_H; // espaçamento grande entre jogos
-  };
-
-  // Y genérico por média das origens
-  const getY = (id) => {
-    if (yCache.has(id)) return yCache.get(id);
-    const jogo = byId.get(id);
-
-    // primeira rodada do upper
-    if (upperIds.has(id) && jogo.rodada === 1) {
-      const y = getYUpperRound1(id);
-      yCache.set(id, y);
-      return y;
-    }
-
-    // Demais rodadas: média das origens (vencedor/perdedor)
-    const aRef = refId(jogo.duplaA);
-    const bRef = refId(jogo.duplaB);
-
-    // Para lower rodada 1 (jogos 9..12), duplaA/B são "Perdedor Jogo n"
-    // Para rounds >1, sempre referenciam "Vencedor/Perdedor Jogo n"
-    // Então sempre podemos pegar a média dos Y de aRef e bRef.
-    if (aRef && bRef) {
-      const yA = getY(aRef);
-      const yB = getY(bRef);
-      const y = (yA + yB + CARD_H) / 2 - CARD_H / 2;
-      yCache.set(id, y);
-      return y;
-    }
-
-    // fallback (se ocorrer algum caso sem refs): empilha pela rodada
-    const y = TOPO + (jogo.rodada - 1) * CARD_H * 1.5;
-    yCache.set(id, y);
-    return y;
-  };
-
-  // Monta nós com x/y já calculados
-  const nodes = estruturaDouble16.map((j) => ({
-    id: j.id,
-    x: getX(j.id),
-    y: getY(j.id),
-    duplaA: j.duplaA,
-    duplaB: j.duplaB,
-  }));
-
-  // Altura total baseada no maior Y
-  const maxY = Math.max(...nodes.map(n => n.y)) + CARD_H + TOPO;
-  const alturaTotal = Math.max(maxY, 800); // mínimo de 800 p/ evitar corte
-
-  // Centro do SVG (posição central)
-const centroX = larguraTotal / 2 - CARD_W / 2;
-const centroY = (alturaTotal / 2) - 200;
-
-// Jogo 30 = Final
-nodes.push({
-  id: 30,
-  x: centroX,
-  y: centroY,
-  duplaA: "Vencedor Upper",
-  duplaB: "Vencedor Lower",
-});
-
-// Jogo 31 = 3º lugar
-nodes.push({
-  id: 31,
-  x: centroX,
-  y: centroY + 180,
-  duplaA: "Perdedor Semi Upper",
-  duplaB: "Perdedor Semi Lower",
-});
-
-  return { nodes, largura: larguraTotal, altura: alturaTotal };
-}
-
-/** Formata texto do card */
-function formatDupla(v) {
-  if (typeof v === "number") return `Dupla ${v}`;
-  return v || "";
 }

@@ -1,0 +1,915 @@
+/src/App.jsx
+
+import BracketPage from './pages/BracketPage'
+
+export default function App() {
+  return (
+    <div className="min-h-screen bg-neutral-50 text-neutral-900">
+      <div className="max-w-7xl mx-auto p-4">
+        <h1 className="text-2xl md:text-3xl font-bold mb-4">Futevôlei – Double Elimination</h1>
+        <BracketPage />
+      </div>
+    </div>
+  )
+}
+
+
+/src/main.jsx
+
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import React from 'react'
+import ReactDOM from 'react-dom/client'
+
+import App from './App.jsx'
+import LoginForm from './pages/login.jsx';
+import NotFound from './pages/404.jsx';
+
+import './styles/index.css'
+import Dashboard from './pages/dashboard/dashboard.jsx';
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+    <React.StrictMode>
+        <BrowserRouter>
+            <Routes>
+                <Route path='/' element={<App />}></Route>
+
+                <Route path='/dashboard' element={<Dashboard />}></Route>
+                <Route path='/dashboard/login' element={<LoginForm />}></Route>
+
+                <Route path='*' element={<NotFound />}></Route>
+            </Routes>
+        </BrowserRouter>
+    </React.StrictMode>
+);
+
+
+/src/pages/BracketPage.jsx
+
+import TabSwitcher from '../components/TabSwitcher'
+import BracketClassificatoria from '../components/BracketClassificatoria'
+import BracketFinais from '../components/BracketFinais'
+
+export default function BracketPage() {
+  return (
+    <div className="space-y-4">
+      <TabSwitcher />
+      <div className="space-y-4">
+        <section>
+          <h2 className="text-xl font-semibold mb-2">Fase Classificatória</h2>
+          <p className="text-sm text-neutral-600 mb-3">Leva até definir campeões Upper/Lower de cada lado (L/R). Após finalizada, clique em "Gerar Finais" para criar as Semis/Final/3º.</p>
+          <BracketClassificatoria />
+        </section>
+
+        <section>
+          <h2 className="text-xl font-semibold mb-2">Fase Finais</h2>
+          <p className="text-sm text-neutral-600 mb-3">Layout manual com posições livres. Use o editor para ajustar coordenadas.</p>
+          <BracketFinais />
+        </section>
+      </div>
+    </div>
+  )
+}
+
+
+/src/pages/login.jsx
+
+import { useState } from "react";
+
+export default function LoginForm() {
+    const [email, setEmail] = useState("");
+    const [senha, setPassword] = useState("");
+    const [erros, setErros] = useState([]);
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+
+        try {
+            const res = await fetch("/api/user/login", {
+                method: "POST",
+                body: JSON.stringify({ email, senha }),
+                mode: "cors",
+                credentials: "include",
+                headers: {
+                    "Content-Type": "application/json"
+                }
+            });
+
+            if (res.status == 200) {
+                window.location = "/dashboard";
+            } else {
+                const body = await res.json();
+                console.log(body);
+                setErros(body.erros);
+            }
+        } catch (err) {
+            console.log(err);
+        }
+    };
+
+    return (
+        <div className="h-screen w-screen flex items-center justify-center bg-gray-100">
+            <form
+                onSubmit={handleSubmit}
+                className="bg-white p-8 rounded-2xl shadow-lg w-full max-w-sm"
+            >
+                <h2 className="text-2xl font-semibold text-center mb-6 text-gray-800">
+                    Login
+                </h2>
+
+                <div className="mb-4">
+                    <label
+                        htmlFor="email"
+                        className="block text-sm font-medium text-gray-700 mb-1"
+                    >
+                        Email
+                    </label>
+                    <input
+                        id="email"
+                        type="email"
+                        placeholder="exemplo@email.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-600"
+                        required
+                    />
+                </div>
+
+                <div className="mb-6">
+                    <label
+                        htmlFor="password"
+                        className="block text-sm font-medium text-gray-700 mb-1"
+                    >
+                        Senha
+                    </label>
+                    <input
+                        id="password"
+                        type="password"
+                        placeholder="*****"
+                        value={senha}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-600"
+                        required
+                    />
+                </div>
+
+                <button
+                    type="submit"
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-lg transition duration-200"
+                >
+                    Entrar
+                </button>
+
+                <p className="text-center text-sm text-gray-500 mt-4">
+                    Esqueceu sua senha?{" "}
+                    <a href="/dashboard/forgot-password" className="text-blue-600 hover:underline">
+                        Recuperar
+                    </a>
+                </p>
+
+                {erros.length > 0 &&
+                    <ul className="text-center  ">
+                        {erros.map((msg, i) => {
+                            return (
+                                <li key={i} className="block text-sm text-red-500 mt-2">{msg}</li>
+                            );
+                        })}
+                    </ul>
+                }
+            </form>
+        </div>
+    );
+}
+
+
+/src/pages/404.jsx
+
+export default function NotFound() {
+    return (
+        <h1>Página não encontrada!</h1>
+    )
+}
+
+
+/src/pages/dashboard/dashboard.jsx
+
+import { useEffect, useState } from "react";
+
+export default function Dashboard() {
+    const [user, setUser] = useState(null);
+
+    // Baixa o user
+    useEffect(() => {
+        async function fetchData() {
+            try {
+                const res = await fetch("/api/user/profile", {
+                    method: "GET",
+                    mode: "cors",
+                    credentials: "include",
+                    headers: {
+
+        aberta ? "w-64" : "w-16"
+      } flex flex-col`}
+    >
+      <button
+        onClick={() => setAberta(!aberta)}
+        className="text-center text-pink-400 hover:text-pink-200 py-3 border-b border-pink-700"
+      >
+        {aberta ? "◀" : "▶"}
+      </button>
+
+      {aberta && (
+        <div className="p-4 space-y-3">
+          <h2 className="font-bold text-lg text-pink-400">Menu</h2>
+
+          <button
+            onClick={onGerar}
+            className="w-full bg-pink-600 hover:bg-pink-700 text-white py-2 rounded-md shadow"
+          >
+            Gerar Bracket
+          </button>
+
+          {/* Outros botões da dashboard aqui depois */}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+/src/components/ModalPlacar.jsx
+
+import React, { useState, useEffect } from "react";
+
+export default function ModalPlacar({ jogo, onSave, onClose }) {
+  const [placarA, setPlacarA] = useState(jogo?.placarA ?? '')
+  const [placarB, setPlacarB] = useState(jogo?.placarB ?? '')
+  const [manualWinner, setManualWinner] = useState(null)
+
+  useEffect(() => {
+    setPlacarA(jogo?.placarA ?? '')
+    setPlacarB(jogo?.placarB ?? '')
+    setManualWinner(null)
+  }, [jogo])
+
+  if (!jogo) return null;
+
+  const winnerAuto = (() => {
+    const a = Number(placarA)
+    const b = Number(placarB)
+    if (Number.isNaN(a) || Number.isNaN(b)) return null
+    if (a > b) return jogo.a
+    if (b > a) return jogo.b
+    return null
+  })()
+
+  const winnerFinal = manualWinner ?? winnerAuto
+
+  const salvar = () => {
+    const payload = { placarA: placarA === '' ? null : Number(placarA), placarB: placarB === '' ? null : Number(placarB) }
+    if (winnerFinal) payload.vencedor = winnerFinal
+    onSave(jogo.id, payload)
+    onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 flex justify-center items-center bg-black/70 z-50">
+      <div className="bg-gray-900 text-white p-6 rounded-xl w-96">
+        <h2 className="text-pink-400 font-bold mb-4">Jogo {jogo.id}</h2>
+
+        <div className="space-y-3 mb-4">
+          <div>
+            <label className="block text-sm mb-1">{jogo.a?.nome || `Dupla ${jogo.a}`}</label>
+            <input
+              type="number"
+              className="w-full bg-gray-800 p-2 rounded"
+              value={placarA}
+              onChange={e => setPlacarA(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="block text-sm mb-1">{jogo.b?.nome || `Dupla ${jogo.b}`}</label>
+            <input
+              type="number"
+              className="w-full bg-gray-800 p-2 rounded"
+              value={placarB}
+              onChange={e => setPlacarB(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <div className="text-sm mb-4">
+          <p>Vencedor automático: {winnerAuto ? (winnerAuto === jogo.a ? (jogo.a?.nome || `Dupla ${jogo.a}`) : (jogo.b?.nome || `Dupla ${jogo.b}`)) : 'Empate/Indefinido'}</p>
+          <label className="block mt-2">Escolher manualmente (W.O, ajuste):</label>
+          <select
+            value={manualWinner ?? ''}
+            onChange={e => setManualWinner(e.target.value || null)}
+            className="w-full bg-gray-800 p-2 rounded mt-1"
+          >
+            <option value="">Automático</option>
+            <option value={jogo.a}>{jogo.a?.nome || `Dupla ${jogo.a}`}</option>
+            <option value={jogo.b}>{jogo.b?.nome || `Dupla ${jogo.b}`}</option>
+          </select>
+        </div>
+
+        <div className="flex justify-end gap-3">
+          <button onClick={onClose} className="px-3 py-1 bg-gray-700 rounded">Cancelar</button>
+          <button onClick={salvar} className="px-3 py-1 bg-pink-600 hover:bg-pink-700 rounded">Salvar</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+/src/components/LayoutEditor.jsx
+
+import { useState } from 'react'
+import layoutFinais from '../logic/layout/layoutFinais.json'
+
+export default function LayoutEditor() {
+  const [mapa, setMapa] = useState(layoutFinais)
+
+  const salvar = () => {
+    const blob = new Blob([JSON.stringify(mapa, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'layoutFinais.json'
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  return (
+    <div className="space-y-3">
+      <h3 className="font-bold">Editor de Layout – Finais</h3>
+      <pre className="bg-neutral-100 p-3 rounded text-xs overflow-auto max-h-96">{JSON.stringify(mapa, null, 2)}</pre>
+      <button className="px-3 py-2 rounded bg-neutral-900 text-white" onClick={salvar}>Baixar layoutFinais.json</button>
+    </div>
+  )
+}
+
+
+
+
+/src/components/MatchCard.jsx
+
+import React from "react";
+
+export default function MatchCard({ jogo, x, y, onClick }) {
+  return (
+    <g transform={`translate(${x}, ${y})`} onClick={onClick} style={{ cursor: "pointer" }}>
+      <rect
+        x="24"
+        y="3"
+        width="204"
+        height="49"
+        rx="3"
+        ry="3"
+        className="match-wrapper"
+        fill="#111"
+        stroke="#ec4899"
+        strokeWidth="2"
+      />
+      <rect
+        x="26"
+        y="5"
+        width="200"
+        height="45"
+        rx="3"
+        ry="3"
+        fill="#1a1a1a"
+      />
+
+      {/* Nome do jogo */}
+      <text
+        x="11"
+        y="31"
+        textAnchor="middle"
+        fill="#ec4899"
+        fontSize="10"
+        fontWeight="bold"
+      >
+        {jogo.id}
+      </text>
+
+      {/* Dupla A */}
+      <text
+        x="55"
+        y="22"
+        fill="#fff"
+        fontSize="11"
+      >
+        {jogo.duplaA || "—"}
+      </text>
+
+      {/* Dupla B */}
+      <text
+        x="55"
+        y="42"
+        fill="#fff"
+        fontSize="11"
+      >
+        {jogo.duplaB || "—"}
+      </text>
+
+      {/* Linha divisória */}
+      <line x1="26" y1="28" x2="226" y2="28" stroke="#333" strokeWidth="1" />
+    </g>
+  );
+}
+
+
+/src/components/RoundLabels.jsx
+
+import React from "react";
+
+export default function RoundLabels({ rounds, y, isLosers }) {
+  const color = isLosers ? "#aaa" : "#fff";
+  return (
+    <g transform={`translate(0, ${y})`}>
+      {rounds.map((label, i) => (
+        <g key={i} transform={`translate(${i * 244}, 0)`}>
+          <rect width="243" height="25" fill="#111" stroke="#ec4899" strokeWidth="1" />
+          <text
+            x="122"
+            y="17"
+            width="243"
+            textAnchor="middle"
+            fill={color}
+            fontSize="13"
+            fontWeight="500"
+          >
+            {label}
+          </text>
+        </g>
+      ))}
+    </g>
+  );
+}
+
+
+/src/components/BracketSVG.jsx
+
+import React, { useState } from "react";
+import MatchCard from "./MatchCard";
+import RoundLabels from "./RoundLabels";
+import ModalPlacar from "./ModalPlacar";
+import { useBracketStore } from "../store/useBracketStore";
+
+// configuração de layout visual
+const ROUND_GAP_X = 244;
+const MATCH_GAP_Y = 56;
+
+export default function BracketSVG() {
+  const jogos = useBracketStore((s) => s.jogos || []);
+  const setPlacar = useBracketStore((s) => s.setPlacar);
+
+  const [modalJogo, setModalJogo] = useState(null);
+
+  // separa upper e lower (mantém tipo para posicionamento simples)
+  const winners = jogos.filter((j) => j.tipo === "upper");
+  const losers = jogos.filter((j) => j.tipo === "lower");
+
+  // nomes das fases (exemplo; ideal gerar dinamicamente a partir dos rounds)
+  const roundsWinners = ["Fase 1", "Fase 2", "Fase 3", "Semi-Finais"];
+  const roundsLosers = ["Perdedores Fase 1", "Perdedores Fase 2", "Perdedores Fase 3", "Perdedores Fase 4"];
+
+  return (
+    <div className="w-full h-screen bg-neutral-900 overflow-auto">
+      <svg className="bracket-svg" width="1800" height="900" viewBox="0 0 1800 900">
+        {/* labels */}
+        <RoundLabels rounds={roundsWinners} y={0} />
+        <RoundLabels rounds={roundsLosers} y={500} isLosers />
+
+        {/* winners bracket (grid simples) */}
+        {winners.map((jogo, i) => {
+          const col = Math.floor((i % winners.length) / Math.max(1, Math.ceil(winners.length / 4)));
+          const row = i % Math.max(1, Math.ceil(winners.length / 4));
+          const x = col * ROUND_GAP_X;
+          const y = 35 + row * MATCH_GAP_Y;
+          return <MatchCard key={jogo.id} jogo={jogo} x={x} y={y} onClick={() => setModalJogo(jogo)} />;
+        })}
+
+        {/* losers bracket (grid simples) */}
+        {losers.map((jogo, i) => {
+          const col = Math.floor(i / 4);
+          const row = i % 4;
+          const x = col * ROUND_GAP_X;
+          const y = 530 + row * MATCH_GAP_Y;
+          return <MatchCard key={jogo.id} jogo={jogo} x={x} y={y} onClick={() => setModalJogo(jogo)} />;
+        })}
+
+        {/* exemplo de linhas entre jogos (pode ser melhorado) */}
+        <line x1="228" y1="60" x2="244" y2="60" stroke="#ec4899" strokeWidth="2" />
+      </svg>
+
+      {modalJogo && (
+        <ModalPlacar
+          jogo={modalJogo}
+          onClose={() => setModalJogo(null)}
+          onSave={(id, payload) => setPlacar(id, payload)}
+        />
+      )}
+    </div>
+  );
+}
+
+
+/src/components/utils/gerarBracket.js
+
+export function gerarBracket(numDuplas) {
+  const jogosUpper = [];
+  const jogosLower = [];
+
+  // primeira rodada
+  const round1 = [];
+  for (let i = 1; i <= numDuplas; i += 2) {
+    round1.push({
+      id: i,
+      duplaA: `Dupla ${i}`,
+      duplaB: `Dupla ${i + 1}`,
+      vencedor: null,
+      perdedor: null,
+    });
+  }
+  jogosUpper.push({ nome: "Fase 1", jogos: round1 });
+
+  // gera as rodadas seguintes reduzindo pela metade até a final
+  let qtd = numDuplas / 2;
+  let contador = numDuplas + 1;
+  while (qtd >= 1) {
+    const jogos = [];
+    for (let j = 0; j < qtd; j++) {
+      jogos.push({
+        id: contador++,
+        duplaA: `Vencedor Jogo ${contador - qtd * 2 + j * 2 + 1}`,
+        duplaB: `Vencedor Jogo ${contador - qtd * 2 + j * 2 + 2}`,
+        vencedor: null,
+        perdedor: null,
+      });
+    }
+    jogosUpper.push({ nome: `Fase ${jogosUpper.length + 1}`, jogos });
+    qtd = qtd / 2;
+  }
+
+  // bracket de perdedores (espelho)
+  const lowerCount = numDuplas / 2;
+  for (let i = 0; i < lowerCount; i++) {
+    jogosLower.push({
+      nome: `Lower ${i + 1}`,
+      jogos: [
+        {
+          id: contador++,
+          duplaA: `Perdedor Jogo ${i * 2 + 1}`,
+          duplaB: `Perdedor Jogo ${i * 2 + 2}`,
+        },
+      ],
+    });
+  }
+
+  return {
+    upper: jogosUpper,
+    lower: jogosLower,
+    final: {
+      id: contador,
+      duplaA: "Vencedor Upper",
+      duplaB: "Vencedor Lower",
+    },
+  };
+}
+
+
+/src/components/utils/estruturaDouble16.js
+
+export const estruturaDouble16 = [
+  // 🏆 UPPER BRACKET (rodada 1)
+  { id: 1, rodada: 1, duplaA: 1, duplaB: 2, vencedorVaiPara: 13, perdedorVaiPara: 9 },
+  { id: 2, rodada: 1, duplaA: 3, duplaB: 4, vencedorVaiPara: 13, perdedorVaiPara: 9 },
+  { id: 3, rodada: 1, duplaA: 5, duplaB: 6, vencedorVaiPara: 14, perdedorVaiPara: 10 },
+  { id: 4, rodada: 1, duplaA: 7, duplaB: 8, vencedorVaiPara: 14, perdedorVaiPara: 10 },
+  { id: 5, rodada: 1, duplaA: 9, duplaB: 10, vencedorVaiPara: 15, perdedorVaiPara: 11 },
+  { id: 6, rodada: 1, duplaA: 11, duplaB: 12, vencedorVaiPara: 15, perdedorVaiPara: 11 },
+  { id: 7, rodada: 1, duplaA: 13, duplaB: 14, vencedorVaiPara: 16, perdedorVaiPara: 12 },
+  { id: 8, rodada: 1, duplaA: 15, duplaB: 16, vencedorVaiPara: 16, perdedorVaiPara: 12 },
+
+  // 🏆 UPPER BRACKET (rodada 2)
+  { id: 13, rodada: 2, duplaA: "Vencedor Jogo 1", duplaB: "Vencedor Jogo 2", vencedorVaiPara: 21, perdedorVaiPara: 17 },
+  { id: 14, rodada: 2, duplaA: "Vencedor Jogo 3", duplaB: "Vencedor Jogo 4", vencedorVaiPara: 21, perdedorVaiPara: 18 },
+  { id: 15, rodada: 2, duplaA: "Vencedor Jogo 5", duplaB: "Vencedor Jogo 6", vencedorVaiPara: 22, perdedorVaiPara: 19 },
+  { id: 16, rodada: 2, duplaA: "Vencedor Jogo 7", duplaB: "Vencedor Jogo 8", vencedorVaiPara: 22, perdedorVaiPara: 20 },
+
+  // 🏆 UPPER BRACKET (semifinal)
+  { id: 21, rodada: 3, duplaA: "Vencedor Jogo 13", duplaB: "Vencedor Jogo 14", vencedorVaiPara: 27, perdedorVaiPara: 23 },
+  { id: 22, rodada: 3, duplaA: "Vencedor Jogo 15", duplaB: "Vencedor Jogo 16", vencedorVaiPara: 27, perdedorVaiPara: 24 },
+
+  // 🏆 FINAL WINNERS
+  { id: 27, rodada: 4, duplaA: "Vencedor Jogo 21", duplaB: "Vencedor Jogo 22", vencedorVaiPara: 29, perdedorVaiPara: 25 },
+
+  // 🏆 GRANDE FINAL
+  { id: 29, rodada: 5, duplaA: "Vencedor Jogo 27", duplaB: "Vencedor Jogo 28", vencedorVaiPara: null, perdedorVaiPara: null },
+
+  // 🔻 LOWER BRACKET
+  { id: 9, rodada: 1, duplaA: "Perdedor Jogo 1", duplaB: "Perdedor Jogo 2", vencedorVaiPara: 17, perdedorVaiPara: null },
+  { id: 10, rodada: 1, duplaA: "Perdedor Jogo 3", duplaB: "Perdedor Jogo 4", vencedorVaiPara: 18, perdedorVaiPara: null },
+  { id: 11, rodada: 1, duplaA: "Perdedor Jogo 5", duplaB: "Perdedor Jogo 6", vencedorVaiPara: 19, perdedorVaiPara: null },
+  { id: 12, rodada: 1, duplaA: "Perdedor Jogo 7", duplaB: "Perdedor Jogo 8", vencedorVaiPara: 20, perdedorVaiPara: null },
+
+  { id: 17, rodada: 2, duplaA: "Vencedor Jogo 9", duplaB: "Perdedor Jogo 13", vencedorVaiPara: 23, perdedorVaiPara: null },
+  { id: 18, rodada: 2, duplaA: "Vencedor Jogo 10", duplaB: "Perdedor Jogo 14", vencedorVaiPara: 23, perdedorVaiPara: null },
+  { id: 19, rodada: 2, duplaA: "Vencedor Jogo 11", duplaB: "Perdedor Jogo 15", vencedorVaiPara: 24, perdedorVaiPara: null },
+  { id: 20, rodada: 2, duplaA: "Vencedor Jogo 12", duplaB: "Perdedor Jogo 16", vencedorVaiPara: 24, perdedorVaiPara: null },
+
+  { id: 23, rodada: 3, duplaA: "Vencedor Jogo 17", duplaB: "Vencedor Jogo 18", vencedorVaiPara: 25, perdedorVaiPara: null },
+  { id: 24, rodada: 3, duplaA: "Vencedor Jogo 19", duplaB: "Vencedor Jogo 20", vencedorVaiPara: 25, perdedorVaiPara: null },
+
+  { id: 25, rodada: 4, duplaA: "Vencedor Jogo 23", duplaB: "Vencedor Jogo 24", vencedorVaiPara: 28, perdedorVaiPara: null },
+
+  { id: 28, rodada: 5, duplaA: "Vencedor Jogo 25", duplaB: "Perdedor Jogo 27", vencedorVaiPara: 29, perdedorVaiPara: null },
+];
+
+
+/src/logic/bracketGenerator.js
+
+import { isPowerOfTwo, nextPowerOfTwo, pairwise, gid, resetIds } from './utils'
+
+/**
+ * Geração de Double Elimination "padrão" dividida em 2 regiões (L/R).
+ *
+ * Objetivo: levar a CLASSIFICATÓRIA até definir, em cada lado (L e R):
+ *  - 1 campeão da Upper (regionUpperWinner)
+ *  - 1 campeão da Lower (regionLowerWinner)
+ *
+ * Depois as FINAIS usam: Semi1 = UL vs LL (lado esquerdo); Semi2 = UR vs LR (lado direito).
+ *
+ * Simplificações: suporta 8, 16, 32, 64 duplas. Para n não-potência de 2, preenche com byes.
+ */
+export function gerarClassificatoria(duplas) {
+  const n = duplas.length
+  const P = isPowerOfTwo(n) ? n : nextPowerOfTwo(n)
+  const byes = P - n
+
+  // Cria seeds com byes no final
+  const seeds = duplas.map(d => d.id)
+  for (let i = 0; i < byes; i++) seeds.push(null)
+
+  // Split em duas regiões equilibradas
+  const half = P / 2
+  const leftSeeds = seeds.slice(0, half)
+  const rightSeeds = seeds.slice(half)
+
+  resetIds(1)
+  const jogos = []
+
+  // Para cada região, montar a árvore Upper e derivar Lower básica até restar 1 campeão em cada
+  gerarRegiao('L', leftSeeds, jogos)
+  gerarRegiao('R', rightSeeds, jogos)
+
+  return jogos
+}
+
+function gerarRegiao(region, seeds, jogos) {
+  // UPPER BRACKET da região
+  let round = 1
+  let current = pairwise(seeds)
+  let upperRounds = []
+
+  while (current.length >= 1) {
+    const roundIds = []
+    current.forEach(([a, b]) => {
+      const id = gid()
+      jogos.push({
+        id,
+        fase: 'class',
+        round,
+        region,
+        a, b,
+        vencedor: null,
+        fontes: [a !== null ? { type: 'seed', id: a } : null, b !== null ? { type: 'seed', id: b } : null].filter(Boolean),
+        tipo: 'upper'
+      })
+      roundIds.push(id)
+    })
+    upperRounds.push(roundIds)
+
+    if (current.length === 1) break
+
+    // winners avançam
+    current = new Array(current.length / 2).fill(null).map(() => [null, null])
+    round++
+  }
+
+  // LOWER BRACKET simplificado por rounds espelhados
+  // A ideia aqui é garantir que do lado haja um "campeão da lower" por região.
+  // Para manter simples, definimos a estrutura de rounds de consolidação baseado
+  // no tamanho da primeira rodada da upper.
+  const firstUpperCount = upperRounds[0].length
+  const lowerNeededRounds = Math.ceil(Math.log2(firstUpperCount))
+
+  // Criamos rounds na lower com placeholders; a ligação real (quem cai da upper)
+  // será resolvida por "fontes" e pela UI ao longo das marcações de vencedor/derrota.
+  for (let lr = 1; lr <= lowerNeededRounds; lr++) {
+    const matches = Math.max(1, Math.floor(firstUpperCount / (2 ** lr)))
+    for (let i = 0; i < matches; i++) {
+      const id = gid()
+      jogos.push({
+        id,
+        fase: 'class',
+        round: lr,
+        region,
+        a: null,
+        b: null,
+        vencedor: null,
+        fontes: [
+          { type: 'upper-drop', round: lr, region },
+          { type: 'lower-prev', round: lr - 1, region }
+        ],
+        tipo: 'lower'
+      })
+    }
+  }
+
+  // Marcar finais internas da região (Upper Winner vs Lower Winner) **dentro da Classificatória**
+  // para sabermos quem vai para a Fase Finais.
+  const regFinalUpper = gid()
+  jogos.push({ id: regFinalUpper, fase: 'class', round: 999, region, a: null, b: null, vencedor: null, fontes: [{ type: 'upper-winner', region }], tipo: 'upper-final' })
+
+  const regFinalLower = gid()
+  jogos.push({ id: regFinalLower, fase: 'class', round: 998, region, a: null, b: null, vencedor: null, fontes: [{ type: 'lower-winner', region }], tipo: 'lower-final' })
+}
+
+
+/src/logic/finalsSetup.js
+
+export function montarFinais(jogosClass) {
+  // Encontrar os identificadores finais regionais superiores e inferiores
+  const Lupper = jogosClass.find(j => j.tipo === 'upper-final' && j.region === 'L')
+  const Llower = jogosClass.find(j => j.tipo === 'lower-final' && j.region === 'L')
+  const Rupper = jogosClass.find(j => j.tipo === 'upper-final' && j.region === 'R')
+  const Rlower = jogosClass.find(j => j.tipo === 'lower-final' && j.region === 'R')
+
+  const semi1 = {
+    id: 1001,
+    fase: 'finais',
+    round: 1,
+    region: 'L',
+    a: null,
+    b: null,
+    vencedor: null,
+    fontes: [
+      { type: 'from', ref: Lupper?.id, path: 'vencedor' },
+      { type: 'from', ref: Llower?.id, path: 'vencedor' }
+    ],
+    tipo: 'semi'
+  }
+
+  const semi2 = {
+    id: 1002,
+    fase: 'finais',
+    round: 1,
+    region: 'R',
+    a: null,
+    b: null,
+    vencedor: null,
+    fontes: [
+      { type: 'from', ref: Rupper?.id, path: 'vencedor' },
+      { type: 'from', ref: Rlower?.id, path: 'vencedor' }
+    ],
+    tipo: 'semi'
+  }
+
+  const final = {
+    id: 1003,
+    fase: 'finais',
+    round: 2,
+    region: 'C',
+    a: null,
+    b: null,
+    vencedor: null,
+    fontes: [
+      { type: 'from', ref: semi1.id, path: 'vencedor' },
+      { type: 'from', ref: semi2.id, path: 'vencedor' }
+    ],
+    tipo: 'final'
+  }
+
+  const terceiro = {
+    id: 1004,
+    fase: 'finais',
+    round: 2,
+    region: 'C',
+    a: null,
+    b: null,
+    vencedor: null,
+    fontes: [
+      { type: 'from', ref: semi1.id, path: 'perdedor' },
+      { type: 'from', ref: semi2.id, path: 'perdedor' }
+    ],
+    tipo: 'third'
+  }
+  return [semi1, semi2, final, terceiro]
+}
+
+
+/src/logic/phaseTransition.js
+
+export function checkIfReadyForFinals(jogos) {
+  const jogosRestantes = jogos.filter(j => !j.vencedor);
+  return jogosRestantes.length === 0;
+}
+
+
+/src/logic/layout/layoutClassificatoria.json
+
+{
+  "L-upper-R1": { "x": 20, "y": 20 },
+  "L-upper-R2": { "x": 220, "y": 100 },
+  "L-upper-R3": { "x": 420, "y": 180 },
+
+  "L-lower-R1": { "x": 20, "y": 260 },
+  "L-lower-R2": { "x": 220, "y": 320 },
+  "L-lower-R3": { "x": 420, "y": 380 },
+
+  "L-upper-final-R999": { "x": 620, "y": 100 },
+  "L-lower-final-R998": { "x": 620, "y": 360 },
+
+  "R-upper-R1": { "x": 20, "y": 20 },
+  "R-upper-R2": { "x": 220, "y": 100 },
+  "R-upper-R3": { "x": 420, "y": 180 },
+
+  "R-lower-R1": { "x": 20, "y": 260 },
+  "R-lower-R2": { "x": 220, "y": 320 },
+  "R-lower-R3": { "x": 420, "y": 380 },
+
+  "R-upper-final-R999": { "x": 620, "y": 100 },
+  "R-lower-final-R998": { "x": 620, "y": 360 }
+}
+
+
+/src/logic/layout/layoutFinais.json
+
+{
+  "1001": { "x": 80,  "y": 120 },
+  "1002": { "x": 80,  "y": 360 },
+  "1003": { "x": 400, "y": 240 },
+  "1004": { "x": 720, "y": 240 }
+}
+
+
+/src/components/BracketClassificatoria.jsx
+
+(imported earlier)
+
+
+/src/components/BracketFinais.jsx
+
+(imported earlier)
+
+
+/src/components/GameCard.jsx
+
+(imported earlier)
+
+
+/src/components/TabSwitcher.jsx
+
+(imported earlier)
+
+
+/src/store/useBracketStore.js
+
+(imported earlier)
+
+
+/src/components/utils/gerarBracket.js
+
+(imported earlier)
+
+
+/src/components/utils/estruturaDouble16.js
+
+(imported earlier)
+
+
+/src/logic/bracketGenerator.js
+
+(imported earlier)
+
+
+/src/logic/finalsSetup.js
+
+(imported earlier)
+
+
+/src/logic/phaseTransition.js
+
+(imported earlier)
+
+
+/src/styles/index.css
+
+(imported earlier)
+
+
+/src/styles/App.css
+
+(imported earlier)

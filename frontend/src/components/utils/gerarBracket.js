@@ -2,7 +2,7 @@ export function gerarBracket(numDuplas) {
   const jogosUpper = [];
   const jogosLower = [];
 
-  // primeira rodada
+  
   const round1 = [];
   for (let i = 1; i <= numDuplas; i += 2) {
     round1.push({
@@ -15,7 +15,7 @@ export function gerarBracket(numDuplas) {
   }
   jogosUpper.push({ nome: "Fase 1", jogos: round1 });
 
-  // gera as rodadas seguintes reduzindo pela metade até a final
+  
   let qtd = numDuplas / 2;
   let contador = numDuplas + 1;
   while (qtd >= 1) {
@@ -33,7 +33,7 @@ export function gerarBracket(numDuplas) {
     qtd = qtd / 2;
   }
 
-  // bracket de perdedores (espelho)
+  
   const lowerCount = numDuplas / 2;
   for (let i = 0; i < lowerCount; i++) {
     jogosLower.push({

@@ -1,5 +1,5 @@
 export const estruturaDouble16 = [
-  // 🏆 UPPER BRACKET (rodada 1)
+  
   { id: 1, rodada: 1, duplaA: 1, duplaB: 2, vencedorVaiPara: 13, perdedorVaiPara: 9 },
   { id: 2, rodada: 1, duplaA: 3, duplaB: 4, vencedorVaiPara: 13, perdedorVaiPara: 9 },
   { id: 3, rodada: 1, duplaA: 5, duplaB: 6, vencedorVaiPara: 14, perdedorVaiPara: 10 },
@@ -9,23 +9,23 @@ export const estruturaDouble16 = [
   { id: 7, rodada: 1, duplaA: 13, duplaB: 14, vencedorVaiPara: 16, perdedorVaiPara: 12 },
   { id: 8, rodada: 1, duplaA: 15, duplaB: 16, vencedorVaiPara: 16, perdedorVaiPara: 12 },
 
-  // 🏆 UPPER BRACKET (rodada 2)
+  
   { id: 13, rodada: 2, duplaA: "Vencedor Jogo 1", duplaB: "Vencedor Jogo 2", vencedorVaiPara: 21, perdedorVaiPara: 17 },
   { id: 14, rodada: 2, duplaA: "Vencedor Jogo 3", duplaB: "Vencedor Jogo 4", vencedorVaiPara: 21, perdedorVaiPara: 18 },
   { id: 15, rodada: 2, duplaA: "Vencedor Jogo 5", duplaB: "Vencedor Jogo 6", vencedorVaiPara: 22, perdedorVaiPara: 19 },
   { id: 16, rodada: 2, duplaA: "Vencedor Jogo 7", duplaB: "Vencedor Jogo 8", vencedorVaiPara: 22, perdedorVaiPara: 20 },
 
-  // 🏆 UPPER BRACKET (semifinal)
+  
   { id: 21, rodada: 3, duplaA: "Vencedor Jogo 13", duplaB: "Vencedor Jogo 14", vencedorVaiPara: 27, perdedorVaiPara: 23 },
   { id: 22, rodada: 3, duplaA: "Vencedor Jogo 15", duplaB: "Vencedor Jogo 16", vencedorVaiPara: 27, perdedorVaiPara: 24 },
 
-  // 🏆 FINAL WINNERS
+  
   { id: 27, rodada: 4, duplaA: "Vencedor Jogo 21", duplaB: "Vencedor Jogo 22", vencedorVaiPara: 29, perdedorVaiPara: 25 },
 
-  // 🏆 GRANDE FINAL
+  
   { id: 29, rodada: 5, duplaA: "Vencedor Jogo 27", duplaB: "Vencedor Jogo 28", vencedorVaiPara: null, perdedorVaiPara: null },
 
-  // 🔻 LOWER BRACKET
+  
   { id: 9, rodada: 1, duplaA: "Perdedor Jogo 1", duplaB: "Perdedor Jogo 2", vencedorVaiPara: 17, perdedorVaiPara: null },
   { id: 10, rodada: 1, duplaA: "Perdedor Jogo 3", duplaB: "Perdedor Jogo 4", vencedorVaiPara: 18, perdedorVaiPara: null },
   { id: 11, rodada: 1, duplaA: "Perdedor Jogo 5", duplaB: "Perdedor Jogo 6", vencedorVaiPara: 19, perdedorVaiPara: null },

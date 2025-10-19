@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 export default function Dashboard() {
     const [user, setUser] = useState(null);
 
-    // Baixa o user
+    
     useEffect(() => {
         async function fetchData() {
             try {
