@@ -1,8 +1,4 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// This is your Prisma schema file
 
 generator client {
   provider = "prisma-client-js"
@@ -13,10 +9,53 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model users {
+model Usuario {
   idUsuario Int     @id @default(autoincrement())
   nome      String  @db.VarChar(30)
-  email     String  @db.VarChar(255) @unique
+  email     String  @unique @db.VarChar(255)
   senha     String  @db.VarChar(255)
   isAdmin   Boolean
+}
+
+model Campeonato {
+  idCampeonato     Int      @id @default(autoincrement())
+  inicio           DateTime
+  fim              DateTime
+  inicioInscricoes DateTime
+  fimInscricoes    DateTime
+  duplas           Dupla[]
+}
+
+model Participante {
+  idParticipante Int            @id @default(autoincrement())
+  nome           String         @db.VarChar(50)
+  telefone       String         @db.Char(11) @unique
+  duplas         DuplaJogador[]
+}
+
+model Dupla {
+  idDupla   Int            @id @default(autoincrement())
+  jogadores DuplaJogador[]
+
+  Campeonato   Campeonato @relation(fields: [idCampeonato], references: [idCampeonato])
+  idCampeonato Int
+}
+
+model DuplaJogador {
+  id Int @id @default(autoincrement())
+
+  jogador   Participante @relation(fields: [idJogador], references: [idParticipante])
+  idJogador Int
+
+  dupla   Dupla @relation(fields: [idDupla], references: [idDupla])
+  idDupla Int
+
+  idCampeonato Int
+
+  @@unique([idDupla, idJogador])
+  @@unique([idCampeonato, idJogador])
+}
+
+model Partida {
+  idMatch Int @id @default(autoincrement())
 }

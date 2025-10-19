@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
 
-import { UserCadDTO, UserLoginDTO } from '@/types/user';
+import { IUserCadDTO, IUserLoginDTO } from '@/types/user';
 import IsAdmin from '@/middlewares/IsAdmin';
 import IsAuth from '@/middlewares/IsAuth';
 import UserModel from '@/models/user';
@@ -9,7 +9,7 @@ import UserModel from '@/models/user';
 export const UserRouter = Router();
 
 UserRouter.post('/login', async (req, res) => {
-	const body: UserLoginDTO = req.body ?? {};
+	const body: IUserLoginDTO = req.body ?? {};
 	const erros = [];
 
 	if (!body.email) {
@@ -31,7 +31,7 @@ UserRouter.post('/login', async (req, res) => {
 		const client = new PrismaClient();
 
 		// Verifica se existe um usuario com esse email
-		let user = await client.users.findUnique({
+		let user = await client.usuario.findUnique({
 			where: {
 				email: body.email,
 			},
@@ -63,7 +63,7 @@ UserRouter.post('/login', async (req, res) => {
 });
 
 UserRouter.post('/register', IsAdmin, async (req, res) => {
-	const body: UserCadDTO = req.body ?? {};
+	const body: IUserCadDTO = req.body ?? {};
 	const erros = [];
 
 	if (!body.email) {
@@ -93,7 +93,7 @@ UserRouter.post('/register', IsAdmin, async (req, res) => {
 		const client = new PrismaClient();
 
 		// Verifica se existe um usuario com esse email
-		let user = await client.users.findUnique({
+		let user = await client.usuario.findUnique({
 			where: {
 				email: body.email,
 			},
@@ -110,7 +110,7 @@ UserRouter.post('/register', IsAdmin, async (req, res) => {
 		const hash = UserModel.HashPassword(body.senha);
 
 		// Cadastra o usuário
-		await client.users.create({
+		await client.usuario.create({
 			data: {
 				nome: body.nome,
 				email: body.email,

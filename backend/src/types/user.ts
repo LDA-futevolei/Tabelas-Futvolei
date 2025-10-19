@@ -1,16 +1,16 @@
-export interface User {
-    idUsuario: number;
-    nome: string;
-    email: string;
-    senha: string;
-    isAdmin: boolean;
+export interface IUser {
+	idUsuario: number;
+	nome: string;
+	email: string;
+	senha: string;
+	isAdmin: boolean;
 }
 
-export interface UserLoginDTO {
-    email: string;
-    senha: string;
+export interface IUserLoginDTO {
+	email: string;
+	senha: string;
 }
 
-export interface UserCadDTO extends Omit<User, "idUsuario"> {}
+export interface IUserCadDTO extends Omit<IUser, 'idUsuario'> {}
 
-export interface UserProfileDTO extends Omit<User, 'senha'> {}
+export interface IUserProfileDTO extends Omit<IUser, 'senha'> {}
