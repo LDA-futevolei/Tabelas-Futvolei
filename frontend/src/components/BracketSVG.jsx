@@ -8,7 +8,8 @@ import { useBracketStore } from "../store/useBracketStore";
 const COLUMN_WIDTH = 260;
 const ROW_HEIGHT = 64;
 const TOP_PADDING = 40;
-const BOTTOM_START = 420;
+const BOTTOM_START = 420; // legacy, not used after vertical stacking
+const BOTTOM_PADDING = 80; // extra space after upper area before losers labels
 
 export default function BracketSVG() {
   const jogos = useBracketStore((s) => s.jogos || []);
@@ -50,26 +51,69 @@ export default function BracketSVG() {
   }, [jogos, lowerMatches]);
 
   const resolveFontesToAB = (jogo) => {
-    // return a shallow copy with a/b filled where possible using jogosMap
-    if (!jogo || !jogo.fontes || jogo.fontes.length === 0) return jogo
+    // Resolve a/b preenchendo por fontes; para 'perdedor', resolvemos os lados efetivos do src recursivamente
+    if (!jogo) return jogo
     const resolved = { ...jogo }
-    const vals = []
-    for (const f of jogo.fontes) {
-      if (!f) continue
-      if (f.type === 'seed' && typeof f.id !== 'undefined') vals.push(f.id)
-      else if (f.type === 'from' && f.ref) {
-        const src = jogosMap.get(f.ref)
-        if (!src) continue
-        if (f.path === 'vencedor' && src.vencedor != null) vals.push(src.vencedor)
-        else if (f.path === 'perdedor' && src.vencedor != null) {
-          // infer perdedor when vencedor known
-          const p = (src.a === src.vencedor) ? src.b : src.a
-          vals.push(p)
+    const resolveEffectiveSides = (m) => {
+      if (!m) return { a: m?.a ?? null, b: m?.b ?? null }
+      let a = m.a ?? null
+      let b = m.b ?? null
+      const fs = Array.isArray(m.fontes) ? m.fontes : []
+      if (a != null && b != null) return { a, b }
+      for (let i = 0; i < fs.length; i++) {
+        const f = fs[i]
+        if (!f) continue
+        if (f.type === 'seed' && f.id != null) {
+          if (i === 0 && a == null) a = f.id
+          else if (i === 1 && b == null) b = f.id
+          else if (a == null) a = f.id
+          else if (b == null) b = f.id
+        } else if (f.type === 'from' && f.ref != null) {
+          const src = jogosMap.get(f.ref)
+          if (!src) continue
+          if (f.path === 'vencedor') {
+            if (src.vencedor != null) {
+              if (i === 0 && a == null) a = src.vencedor
+              else if (i === 1 && b == null) b = src.vencedor
+              else if (a == null) a = src.vencedor
+              else if (b == null) b = src.vencedor
+            }
+          } else if (f.path === 'perdedor') {
+            const sides = resolveEffectiveSides(src)
+            if (src.vencedor != null && sides.a != null && sides.b != null) {
+              const loser = (src.vencedor === sides.a) ? sides.b : sides.a
+              if (i === 0 && a == null) a = loser
+              else if (i === 1 && b == null) b = loser
+              else if (a == null) a = loser
+              else if (b == null) b = loser
+            }
+          }
         }
       }
+      return { a, b }
     }
-    resolved.a = typeof vals[0] !== 'undefined' ? vals[0] : resolved.a
-    resolved.b = typeof vals[1] !== 'undefined' ? vals[1] : resolved.b
+
+    if (Array.isArray(jogo.fontes) && jogo.fontes.length > 0) {
+      const vals = []
+      for (let i = 0; i < jogo.fontes.length; i++) {
+        const f = jogo.fontes[i]
+        if (!f) continue
+        if (f.type === 'seed' && typeof f.id !== 'undefined') vals.push(f.id)
+        else if (f.type === 'from' && f.ref) {
+          const src = jogosMap.get(f.ref)
+          if (!src) continue
+          if (f.path === 'vencedor' && src.vencedor != null) vals.push(src.vencedor)
+          else if (f.path === 'perdedor') {
+            const sides = resolveEffectiveSides(src)
+            if (src.vencedor != null && sides.a != null && sides.b != null) {
+              vals.push(src.vencedor === sides.a ? sides.b : sides.a)
+            }
+          }
+        }
+      }
+      if (typeof vals[0] !== 'undefined') resolved.a = vals[0]
+      if (typeof vals[1] !== 'undefined') resolved.b = vals[1]
+    }
     return resolved
   }
 
@@ -112,7 +156,7 @@ export default function BracketSVG() {
     if (hasPrelim) {
       const matches = orderMatches(prelimMatches)
       const columnHeight = matches.length * ROW_HEIGHT
-      const startY = TOP_PADDING + Math.max(0, (maxUpperRows * ROW_HEIGHT - columnHeight) / 2)
+      const startY = TOP_PADDING + Math.max(0, (maxUpperRowsEff * ROW_HEIGHT - columnHeight) / 2)
       positionsByRound[0] = matches.map((jogo, i) => ({ id: jogo.id, jogo, colIndex: 0, x: 0 * COLUMN_WIDTH, y: startY + i * ROW_HEIGHT }))
     }
 
@@ -122,8 +166,8 @@ export default function BracketSVG() {
       const rawMatches = grouped.upper.get(roundIndex) || []
       const matches = orderMatches(rawMatches)
       // default column height uses all matches; for first main column we may compress based on visible matches
-      let columnHeight = matches.length * ROW_HEIGHT
-      let startY = TOP_PADDING + Math.max(0, (maxUpperRows * ROW_HEIGHT - columnHeight) / 2)
+    let columnHeight = matches.length * ROW_HEIGHT
+    let startY = TOP_PADDING + Math.max(0, (maxUpperRowsEff * ROW_HEIGHT - columnHeight) / 2)
 
       const isFirstMainCol = (hasPrelim ? colIndex === 1 : colIndex === 0)
       if (isFirstMainCol) {
@@ -220,25 +264,27 @@ export default function BracketSVG() {
   // if we have prelims, label the leftmost column as Fase 1 (prelim) and shift main rounds by +1
   const labelsUpper = hasPrelimGlobal ? Array.from({ length: 1 + upperRounds.length }, (_, i) => `Fase ${i + 1}`) : upperRounds.map(r => `Fase ${r}`);
   const maxUpperRows = upperRounds.reduce((mx, r) => Math.max(mx, (grouped.upper.get(r) || []).length), 0);
-  // compute lower rows to ensure bottom area is visible
+  const prelimCount = (jogos || []).filter(j => j.tipo === 'prelim').length;
+  const maxUpperRowsEff = hasPrelimGlobal ? Math.max(maxUpperRows, prelimCount) : maxUpperRows;
+  // losers (lower) abaixo da upper (Challonge-like)
   const lowerRounds = Array.from(grouped.lower.keys()).sort((a,b) => a - b);
   const maxLowerRows = lowerRounds.reduce((mx, r) => Math.max(mx, (grouped.lower.get(r) || []).length), 0);
-  const colsUpper = Math.max(1, upperRounds.length);
-  const colsLower = Math.max(1, lowerRounds.length);
-  // ensure svgWidth considers both upper and lower columns; add horizontal padding so no horizontal scroll
+  const hasLowerMatches = lowerRounds.length > 0;
+  const effectiveUpperCols = (hasPrelimGlobal ? 1 : 0) + upperRounds.length;
+  const colsUpper = Math.max(1, effectiveUpperCols);
+  const colsLower = hasLowerMatches ? Math.max(1, lowerRounds.length) : 0;
   const totalCols = Math.max(colsUpper, colsLower);
   const svgWidth = Math.max(1000, totalCols * COLUMN_WIDTH + 320);
-  const labelHeight = 32; // label bar height for round labels
-  const gapBetween = 28; // space between upper area and lower labels
-  const upperAreaHeight = TOP_PADDING + maxUpperRows * ROW_HEIGHT;
-  // position for lower group (below upper area plus gap and label height)
-  const lowerGroupY = upperAreaHeight + gapBetween + labelHeight;
+  const labelHeight = 32; // altura das labels
+  const gapBetween = 28; // espaço entre upper e labels da losers
+  const upperAreaHeight = TOP_PADDING + maxUpperRowsEff * ROW_HEIGHT + BOTTOM_PADDING;
+  const lowerGroupY = hasLowerMatches ? upperAreaHeight + gapBetween + labelHeight : 0;
   const svgHeightUpper = Math.max(400, upperAreaHeight + 200);
-  const svgHeight = Math.max(svgHeightUpper, lowerGroupY + maxLowerRows * ROW_HEIGHT + 200);
+  const svgHeight = hasLowerMatches ? Math.max(svgHeightUpper, lowerGroupY + maxLowerRows * ROW_HEIGHT + 200) : svgHeightUpper;
 
   return (
     
-    <div className="w-full p-4 bg-neutral-900 overflow-auto min-h-screen">
+  <div className="w-full p-4 bg-neutral-900 overflow-x-auto overflow-y-auto min-h-screen">
       {/* debug buttons removed */}
 
       
@@ -256,21 +302,23 @@ export default function BracketSVG() {
       )}
 
   <svg className="bracket-svg block mx-auto" width={svgWidth} height={svgHeight} viewBox={`0 0 ${svgWidth} ${svgHeight}`}>
+    {/* Upper labels and bracket */}
     <RoundLabels rounds={labelsUpper} y={0} />
     {renderUpper()}
 
-    {/* lower bracket area */}
-    <g transform={`translate(0, ${lowerGroupY})`}>
-      <RoundLabels rounds={Array.from(grouped.lower.keys()).sort((a,b) => a - b).map(r => `Perdedores Fase ${r}`)} y={0} isLosers={true} />
-      {(() => {
+    {/* Lower labels and bracket (abaixo) */}
+    {hasLowerMatches && (
+      <g transform={`translate(0, ${lowerGroupY})`}>
+        <RoundLabels rounds={Array.from(grouped.lower.keys()).sort((a,b) => a - b).map(r => `Perdedores Fase ${r}`)} y={0} isLosers={true} />
+        {(() => {
         // render lower bracket similarly to upper, but offset vertically
         const rounds = Array.from(grouped.lower.keys()).sort((a,b) => a - b);
         const positionsByRound = []
         rounds.forEach((roundIndex, colIndex) => {
           const rawMatches = grouped.lower.get(roundIndex) || []
           const matches = orderMatches(rawMatches)
-          const columnHeight = matches.length * ROW_HEIGHT
-          const startY = TOP_PADDING + Math.max(0, (maxUpperRows * ROW_HEIGHT - columnHeight) / 2)
+            const columnHeight = matches.length * ROW_HEIGHT
+            const startY = TOP_PADDING + Math.max(0, (maxLowerRows * ROW_HEIGHT - columnHeight) / 2)
           if (colIndex === 0) {
             positionsByRound[colIndex] = matches.map((jogo, i) => ({ id: jogo.id, jogo, x: colIndex * COLUMN_WIDTH, y: startY + i * ROW_HEIGHT }))
           } else {
@@ -312,15 +360,16 @@ export default function BracketSVG() {
           })
         })
 
-        const sourceDuplas = (participants && participants.length > 0) ? participants : duplas
-        const nodes = positionsByRound.flatMap(col => col.map(pos => (
-          <g key={`lower-${pos.id}`} transform={`translate(${pos.x}, ${pos.y})`}>
-            <MatchCard jogo={resolveFontesToAB(pos.jogo)} jogos={jogos} x={0} y={0} onClick={() => setModalJogo(pos.jogo)} duplas={sourceDuplas} />
-          </g>
-        )))
-        return (<g>{lines}{nodes}</g>)
-      })()}
-    </g>
+          const sourceDuplas = (participants && participants.length > 0) ? participants : duplas
+          const nodes = positionsByRound.flatMap(col => col.map(pos => (
+            <g key={`lower-${pos.id}`} transform={`translate(${pos.x}, ${pos.y})`}>
+              <MatchCard jogo={resolveFontesToAB(pos.jogo)} jogos={jogos} x={0} y={0} onClick={() => setModalJogo(pos.jogo)} duplas={sourceDuplas} />
+            </g>
+          )))
+          return (<g>{lines}{nodes}</g>)
+        })()}
+      </g>
+    )}
   </svg>
 
       {modalJogo && (

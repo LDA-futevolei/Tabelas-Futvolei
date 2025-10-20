@@ -135,8 +135,55 @@ export const useBracketStore = create((set, get) => ({
       const updated = jogos.find(j => j.id === idJogo)
       if (updated && typeof updated.vencedor !== 'undefined' && updated.vencedor !== null) {
         const win = updated.vencedor
+        // resolve effective slot ids for A/B even if fields are null, using fontes
+        const jogosById = new Map(jogos.map(j => [j.id, j]))
+        const resolveFromFonte = (f) => {
+          if (!f) return null
+          if (f.type === 'seed' && f.id != null) return f.id
+          if (f.type === 'from' && f.ref != null) {
+            const src = jogosById.get(f.ref)
+            if (!src) return null
+            if (f.path === 'vencedor') return src.vencedor ?? null
+            if (f.path === 'perdedor') {
+              // derive loser of src if possible
+              const sw = src.vencedor
+              if (sw == null) return null
+              let sa = src.a, sb = src.b
+              // try resolve src sides from its fontes just in case
+              if ((sa == null || sb == null) && Array.isArray(src.fontes)) {
+                for (let i = 0; i < src.fontes.length; i++) {
+                  const sf = src.fontes[i]
+                  const val = resolveFromFonte(sf)
+                  if (val == null) continue
+                  if (i === 0 && sa == null) sa = val
+                  else if (i === 1 && sb == null) sb = val
+                }
+              }
+              if (sa == null || sb == null) return null
+              return sw === sa ? sb : sa
+            }
+          }
+          return null
+        }
+        const fontes = Array.isArray(updated.fontes) ? updated.fontes : []
+        // map fonte index to slot
+        let effA = updated.a
+        let effB = updated.b
+        if ((effA == null || effB == null) && fontes.length > 0) {
+          const f0 = fontes[0]
+          const f1 = fontes[1]
+          if (effA == null) effA = resolveFromFonte(f0)
+          if (effB == null) effB = resolveFromFonte(f1)
+          // fallback: if only one fonte exists, try fill remaining from any fonte
+          if (effA == null) {
+            for (const f of fontes) { const v = resolveFromFonte(f); if (v != null) { effA = v; break } }
+          }
+          if (effB == null) {
+            for (const f of fontes) { const v = resolveFromFonte(f); if (v != null && v !== effA) { effB = v; break } }
+          }
+        }
         // determine loser where possible
-        const loser = (updated.a != null && updated.b != null) ? ((updated.a === win) ? updated.b : updated.a) : null
+        const loser = (effA != null && effB != null) ? ((effA === win) ? effB : effA) : null
 
         // propagate to downstream matches that reference this match
         for (const tgt of jogos) {
@@ -202,6 +249,11 @@ export const useBracketStore = create((set, get) => ({
     const finais = montarFinais(jogos)
     const jogosComFinais = [...jogos.filter(j => j.fase === 'class'), ...finais]
     set({ jogos: jogosComFinais, faseAtual: 'finais' })
+  },
+
+  // permite alternar manualmente a fase
+  setFaseAtual: (fase) => {
+    set({ faseAtual: fase })
   },
 
   
