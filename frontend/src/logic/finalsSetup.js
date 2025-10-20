@@ -1,3 +1,5 @@
+import { gid } from './utils.js'
+
 export function montarFinais(jogosClass) {
   
   const Lupper = jogosClass.find(j => j.tipo === 'upper-final' && j.region === 'L')
@@ -6,7 +8,7 @@ export function montarFinais(jogosClass) {
   const Rlower = jogosClass.find(j => j.tipo === 'lower-final' && j.region === 'R')
 
   const semi1 = {
-    id: 1001,
+    id: gid(),
     fase: 'finais',
     round: 1,
     region: 'L',
@@ -21,7 +23,7 @@ export function montarFinais(jogosClass) {
   }
 
   const semi2 = {
-    id: 1002,
+    id: gid(),
     fase: 'finais',
     round: 1,
     region: 'R',
@@ -36,7 +38,7 @@ export function montarFinais(jogosClass) {
   }
 
   const final = {
-    id: 1003,
+    id: gid(),
     fase: 'finais',
     round: 2,
     region: 'C',
@@ -51,7 +53,7 @@ export function montarFinais(jogosClass) {
   }
 
   const terceiro = {
-    id: 1004,
+    id: gid(),
     fase: 'finais',
     round: 2,
     region: 'C',
@@ -62,7 +64,7 @@ export function montarFinais(jogosClass) {
       { type: 'from', ref: semi1.id, path: 'perdedor' },
       { type: 'from', ref: semi2.id, path: 'perdedor' }
     ],
-    tipo: 'third'
+    tipo: 'third-place'
   }
   return [semi1, semi2, final, terceiro]
 }
