@@ -316,19 +316,28 @@ export default function BracketSVG() {
         const positionsByRound = []
         rounds.forEach((roundIndex, colIndex) => {
           const rawMatches = grouped.lower.get(roundIndex) || []
-          const matches = orderMatches(rawMatches)
-            const columnHeight = matches.length * ROW_HEIGHT
-            const startY = TOP_PADDING + Math.max(0, (maxLowerRows * ROW_HEIGHT - columnHeight) / 2)
+          // NÃO ordenar por seed: manter ordem estável (por id) para respeitar o encadeamento da lower
+          const matches = rawMatches.slice().sort((a,b) => a.id - b.id)
+          const columnHeight = matches.length * ROW_HEIGHT
+          const startY = TOP_PADDING + Math.max(0, (maxLowerRows * ROW_HEIGHT - columnHeight) / 2)
           if (colIndex === 0) {
             positionsByRound[colIndex] = matches.map((jogo, i) => ({ id: jogo.id, jogo, x: colIndex * COLUMN_WIDTH, y: startY + i * ROW_HEIGHT }))
           } else {
             const prev = positionsByRound[colIndex - 1] || []
+            const prevById = new Map(prev.map(p => [p.id, p]))
             positionsByRound[colIndex] = matches.map((jogo, i) => {
-              const srcA = prev[2 * i]
-              const srcB = prev[2 * i + 1]
-              const yA = srcA ? srcA.y : (startY + (2 * i) * ROW_HEIGHT)
-              const yB = srcB ? srcB.y : (startY + (2 * i + 1) * ROW_HEIGHT)
-              const y = (yA + yB) / 2
+              // procurar fontes que referenciem jogos da coluna anterior
+              const refs = (Array.isArray(jogo.fontes) ? jogo.fontes.filter(f => f.type === 'from' && f.ref != null).map(f => f.ref) : [])
+              const ys = refs.map(r => prevById.get(r)).filter(Boolean).map(p => p.y + 26)
+              let y
+              if (ys.length > 0) {
+                y = ys.reduce((s,v)=>s+v,0)/ys.length - 26
+              } else {
+                // fallback: emparelhamento por índice quando não houver ref para a coluna anterior
+                const yA = prev[2 * i] ? prev[2 * i].y : (startY + (2 * i) * ROW_HEIGHT)
+                const yB = prev[2 * i + 1] ? prev[2 * i + 1].y : (startY + (2 * i + 1) * ROW_HEIGHT)
+                y = (yA + yB) / 2
+              }
               return { id: jogo.id, jogo, x: colIndex * COLUMN_WIDTH, y }
             })
           }

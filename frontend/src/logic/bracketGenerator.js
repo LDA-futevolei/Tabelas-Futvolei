@@ -4,6 +4,7 @@ export function gerarClassificatoria(duplas, options = {}) {
   const n = duplas.length
   const spread = !!options.spread
   const prelim = !!options.prelim
+  const ladder = options.ladder !== false // por padrão usamos o estilo ladder (Challonge-like)
 
   // determine bracket size P
   let P
@@ -130,50 +131,252 @@ export function gerarClassificatoria(duplas, options = {}) {
     })
   }
 
-  // Build losers (lower) bracket iteratively: collect losers of each winners round and pair them
+  // Build losers (lower) bracket using alternating pattern.
+  // Para spread=true (bracket expandido com byes), começamos com uma rodada L1 de "injeção" onde
+  // cada perdedor de W1 cria um jogo (fonte única). Em seguida alternamos: consolidação, injeção de W2, consolidação, injeção de W3, ...
+  // Para prelim/compact (P ajustado para potência), usamos o padrão anterior (pairing direto em L1).
   const lowerRounds = []
-  let carry = [] // descriptors for next lower round
-  for (let r = 0; r < winnersByRound.length; r++) {
-    // append losers of winners round r in order
-    for (const m of winnersByRound[r]) carry.push({ type: 'from', ref: m.id, path: 'perdedor' })
-
-    // then try to flush carry into lower rounds
-    let thisRound = []
-    while (carry.length >= 2) {
-      const a = carry.shift()
-      const b = carry.shift()
-      const id = gid()
-      const fontes = []
-      if (a) fontes.push(a)
-      if (b) fontes.push(b)
-  const match = { id, fase: 'class', round: r + 1 + roundOffset, region: 'L', a: null, b: null, vencedor: null, fontes, tipo: 'lower' }
-      jogos.push(match)
-      thisRound.push(match)
-    }
-    // winners of this lower round become descriptors for next iteration
-    carry = thisRound.map(m => ({ type: 'from', ref: m.id, path: 'vencedor' })).concat(carry)
-    if (thisRound.length > 0) lowerRounds.push(thisRound)
+  const R = winnersByRound.length // number of winners rounds after prelims
+  const losersByWRound = [] // 0-based index: losers of winnersByRound[i]
+  for (let r = 0; r < R; r++) {
+    const arr = []
+    for (const m of winnersByRound[r]) arr.push({ type: 'from', ref: m.id, path: 'perdedor' })
+    losersByWRound[r] = arr
   }
 
-  // If any leftover carry, keep pairing until single winner emerges
-  let lr = winnersByRound.length + roundOffset
-  while (carry.length > 1) {
+  let Lk = 1
+  let rolling = []
+  const useSpreadStyle = !!spread
+  if (ladder && useSpreadStyle) {
+    // Filtrar apenas perdedores de partidas realmente disputadas (ambos os lados existem)
+    const playedLosersByWRound = losersByWRound.map((arr, idx) => {
+      // losersByWRound foi montado a partir dos matches; precisamos checar matches
+      const srcMatches = winnersByRound[idx] || []
+      const res = []
+      for (let i = 0; i < srcMatches.length; i++) {
+        const m = srcMatches[i]
+        if (!m) continue
+        const hasBoth = (m.a != null) && (m.b != null)
+        if (hasBoth) res.push({ type: 'from', ref: m.id, path: 'perdedor' })
+      }
+      return res
+    })
+
+    // L1 (injeção): um jogo por perdedor de W1 (fonte única)
+    const src = playedLosersByWRound[0] || []
     const thisRound = []
-    while (carry.length >= 2) {
-      const a = carry.shift()
-      const b = carry.shift()
+    for (let i = 0; i < src.length; i++) {
       const id = gid()
-      const match = { id, fase: 'class', round: lr + 1, region: 'L', a: null, b: null, vencedor: null, fontes: [a, b].filter(Boolean), tipo: 'lower' }
+      const fontes = [src[i]].filter(Boolean)
+      const match = { id, fase: 'class', round: Lk, region: 'L', a: null, b: null, vencedor: null, fontes, tipo: 'lower' }
       jogos.push(match)
       thisRound.push(match)
     }
-    carry = thisRound.map(m => ({ type: 'from', ref: m.id, path: 'vencedor' })).concat(carry)
     lowerRounds.push(thisRound)
-    lr++
+    rolling = thisRound.map(m => ({ type: 'from', ref: m.id, path: 'vencedor' }))
+
+    // L2: injeta PRIMEIRA metade dos perdedores de W2
+    if (playedLosersByWRound[1] && playedLosersByWRound[1].length > 0) {
+      const drops = playedLosersByWRound[1]
+      const half = Math.floor(drops.length / 2)
+      const part1 = drops.slice(0, half)
+      const L2 = []
+      const count = Math.min(rolling.length, part1.length)
+      for (let i = 0; i < count; i++) {
+        const id = gid()
+        const fontes = [rolling[i], part1[i]].filter(Boolean)
+        const match = { id, fase: 'class', round: 2, region: 'L', a: null, b: null, vencedor: null, fontes, tipo: 'lower' }
+        jogos.push(match)
+        L2.push(match)
+      }
+      lowerRounds.push(L2)
+      rolling = L2.map(m => ({ type: 'from', ref: m.id, path: 'vencedor' }))
+
+      // L3: injeta SEGUNDA metade de W2 contra vencedores de L2
+      const part2 = drops.slice(half)
+      const L3 = []
+      const count3 = Math.min(rolling.length, part2.length)
+      for (let i = 0; i < count3; i++) {
+        const id = gid()
+        const fontes = [rolling[i], part2[i]].filter(Boolean)
+        const match = { id, fase: 'class', round: 3, region: 'L', a: null, b: null, vencedor: null, fontes, tipo: 'lower' }
+        jogos.push(match)
+        L3.push(match)
+      }
+      lowerRounds.push(L3)
+      rolling = L3.map(m => ({ type: 'from', ref: m.id, path: 'vencedor' }))
+    }
+
+    // A partir daqui: L4 consolida; L5 injeta W3; L6 consolida; L7 injeta W4; etc.
+    for (let w = 2, roundNum = 4; w < R; w++) {
+      // Consolidação
+      const LC = []
+      for (let i = 0; i + 1 < rolling.length; i += 2) {
+        const id = gid()
+        const fontes = [rolling[i], rolling[i + 1]].filter(Boolean)
+        const match = { id, fase: 'class', round: roundNum++, region: 'L', a: null, b: null, vencedor: null, fontes, tipo: 'lower' }
+        jogos.push(match)
+        LC.push(match)
+      }
+      lowerRounds.push(LC)
+      rolling = LC.map(m => ({ type: 'from', ref: m.id, path: 'vencedor' }))
+
+      // Injeção dos perdedores de W(w+1)
+      const drops = playedLosersByWRound[w + 1] || []
+      if (drops.length === 0) continue
+      const LI = []
+      const countI = Math.min(rolling.length, drops.length)
+      for (let i = 0; i < countI; i++) {
+        const id = gid()
+        const fontes = [rolling[i], drops[i]].filter(Boolean)
+        const match = { id, fase: 'class', round: roundNum++, region: 'L', a: null, b: null, vencedor: null, fontes, tipo: 'lower' }
+        jogos.push(match)
+        LI.push(match)
+      }
+      lowerRounds.push(LI)
+      rolling = LI.map(m => ({ type: 'from', ref: m.id, path: 'vencedor' }))
+    }
+  } else if (ladder) {
+    // Modo compact/prelim: tentar mapeamento híbrido Challonge-like quando o padrão de prelim gera
+    // exatamente 1 jogo do upper R1 sem vínculo com prelim (ex.: n=23 -> M=7, W1=8 => 7 com prelim, 1 sem)
+    const prelimMatchesNow = jogos.filter(j => j.tipo === 'prelim')
+    const prelimLosers = prelimMatchesNow.map(pm => ({ type: 'from', ref: pm.id, path: 'perdedor' }))
+    const w1 = winnersByRound[0] || []
+    const hasFromPrelim = (m) => Array.isArray(m.fontes) && m.fontes.some(f => f && f.type === 'from' && prelimMatchesNow.some(pm => pm.id === f.ref))
+    const A = [] // losers de W1 com ligação a prelim
+    const B = [] // losers de W1 sem ligação a prelim
+    for (const m of w1) {
+      const desc = { type: 'from', ref: m.id, path: 'perdedor' }
+      if (hasFromPrelim(m)) A.push(desc)
+      else B.push(desc)
+    }
+    const special = (B.length === 1 && prelimLosers.length === A.length && A.length > 0)
+
+    const makePairs = (roundNum, arr1, arr2) => {
+      const thisRound = []
+      const count = Math.min(arr1.length, arr2.length)
+      for (let i = 0; i < count; i++) {
+        const id = gid()
+        const fontes = [arr1[i], arr2[i]].filter(Boolean)
+        const match = { id, fase: 'class', round: roundNum, region: 'L', a: null, b: null, vencedor: null, fontes, tipo: 'lower' }
+        jogos.push(match)
+        thisRound.push(match)
+      }
+      if (thisRound.length > 0) lowerRounds.push(thisRound)
+      return thisRound.map(m => ({ type: 'from', ref: m.id, path: 'vencedor' }))
+    }
+
+    if (special) {
+      // Caso especial (ex.: 23): padrão desejado ~ 7,4,4,2,2,1,1
+      // L1: prelim losers x losers de W1 (com ligação a prelim) => 7
+      const L1winners = makePairs(1, prelimLosers, A)
+      // L2: consolidar vencedores de L1 (7) junto com B (1) para formar 8 entradas => 4 jogos
+      const entrantsL2 = [...L1winners]
+      if (B && B.length === 1) entrantsL2.push(B[0])
+      const L2 = []
+      for (let i = 0; i + 1 < entrantsL2.length; i += 2) {
+        const id = gid()
+        const fontes = [entrantsL2[i], entrantsL2[i + 1]].filter(Boolean)
+        const match = { id, fase: 'class', round: 2, region: 'L', a: null, b: null, vencedor: null, fontes, tipo: 'lower' }
+        jogos.push(match)
+        L2.push(match)
+      }
+      if (L2.length > 0) lowerRounds.push(L2)
+      const winnersL2 = L2.map(m => ({ type: 'from', ref: m.id, path: 'vencedor' }))
+      // L3: winnersL2 x losers de W2 => 4
+      const L3winners = makePairs(3, winnersL2, losersByWRound[1] || [])
+      // L4: consolidação => 2
+      const L4 = []
+      for (let i = 0; i + 1 < L3winners.length; i += 2) {
+        const id = gid()
+        const fontes = [L3winners[i], L3winners[i + 1]].filter(Boolean)
+        const match = { id, fase: 'class', round: 4, region: 'L', a: null, b: null, vencedor: null, fontes, tipo: 'lower' }
+        jogos.push(match)
+        L4.push(match)
+      }
+      if (L4.length > 0) lowerRounds.push(L4)
+      const winnersL4 = L4.map(m => ({ type: 'from', ref: m.id, path: 'vencedor' }))
+      // L5: winnersL4 x losers de W3 => 2
+      const L5winners = makePairs(5, winnersL4, losersByWRound[2] || [])
+      // L6: consolidação => 1
+      const L6 = []
+      for (let i = 0; i + 1 < L5winners.length; i += 2) {
+        const id = gid()
+        const fontes = [L5winners[i], L5winners[i + 1]].filter(Boolean)
+        const match = { id, fase: 'class', round: 6, region: 'L', a: null, b: null, vencedor: null, fontes, tipo: 'lower' }
+        jogos.push(match)
+        L6.push(match)
+      }
+      if (L6.length > 0) lowerRounds.push(L6)
+      const winnersL6 = L6.map(m => ({ type: 'from', ref: m.id, path: 'vencedor' }))
+      // L7: winnersL6 x losers de W4 (se existir) => 1
+      makePairs(7, winnersL6, losersByWRound[3] || [])
+    } else {
+      // fallback ladder compact genérico
+      if (losersByWRound[0] && losersByWRound[0].length > 0) {
+        const src = losersByWRound[0]
+        const thisRound = []
+        for (let i = 0; i + 1 < src.length; i += 2) {
+          const id = gid()
+          const fontes = [src[i], src[i + 1]].filter(Boolean)
+          const match = { id, fase: 'class', round: 1, region: 'L', a: null, b: null, vencedor: null, fontes, tipo: 'lower' }
+          jogos.push(match)
+          thisRound.push(match)
+        }
+        lowerRounds.push(thisRound)
+        rolling = thisRound.map(m => ({ type: 'from', ref: m.id, path: 'vencedor' }))
+      }
+      for (Lk = 2; Lk <= (2 * R - 2); Lk++) {
+        const thisRound = []
+        if (Lk % 2 === 0) {
+          // injeção: winners vs losers de W(wIdx)
+          const wIdx = Math.floor(Lk / 2)
+          const dropIns = losersByWRound[wIdx] || []
+          const count = Math.min(rolling.length, dropIns.length)
+          for (let i = 0; i < count; i++) {
+            const id = gid()
+            const fontes = [rolling[i], dropIns[i]].filter(Boolean)
+            const match = { id, fase: 'class', round: Lk, region: 'L', a: null, b: null, vencedor: null, fontes, tipo: 'lower' }
+            jogos.push(match)
+            thisRound.push(match)
+          }
+        } else {
+          // consolidação
+          for (let i = 0; i + 1 < rolling.length; i += 2) {
+            const id = gid()
+            const fontes = [rolling[i], rolling[i + 1]].filter(Boolean)
+            const match = { id, fase: 'class', round: Lk, region: 'L', a: null, b: null, vencedor: null, fontes, tipo: 'lower' }
+            jogos.push(match)
+            thisRound.push(match)
+          }
+        }
+        if (thisRound.length > 0) lowerRounds.push(thisRound)
+        rolling = thisRound.map(m => ({ type: 'from', ref: m.id, path: 'vencedor' }))
+      }
+    }
+  } else {
+    // Fallback simples: empilhar como antes, caso alguém desligue o ladder
+    let carry = []
+    for (let r = 0; r < R; r++) {
+      // append losers of winners round r in order
+      for (const m of winnersByRound[r]) carry.push({ type: 'from', ref: m.id, path: 'perdedor' })
+      // flush em pares
+      const thisRound = []
+      while (carry.length >= 2) {
+        const a = carry.shift()
+        const b = carry.shift()
+        const id = gid()
+        const match = { id, fase: 'class', round: lowerRounds.length + 1, region: 'L', a: null, b: null, vencedor: null, fontes: [a, b].filter(Boolean), tipo: 'lower' }
+        jogos.push(match)
+        thisRound.push(match)
+      }
+      if (thisRound.length > 0) lowerRounds.push(thisRound)
+      carry = thisRound.map(m => ({ type: 'from', ref: m.id, path: 'vencedor' })).concat(carry)
+    }
   }
 
-  // add lower-final marker
-  if (lowerRounds.length > 0) {
+  // add lower-final marker pointing to the ultimate lower winner (if exists)
+  if (rolling.length >= 1) {
     const lowerFinalId = gid()
     jogos.push({ id: lowerFinalId, fase: 'class', round: 998, region: 'L', a: null, b: null, vencedor: null, fontes: [{ type: 'lower-winner', region: 'L' }], tipo: 'lower-final' })
   }
@@ -209,58 +412,7 @@ export function gerarClassificatoria(duplas, options = {}) {
     }
   }
 
-  // Attempt to create two semifinals pairing upper winners with lower winners when possible
-  // Strategy:
-  // - Identify the last non-empty winners round (upper semis winners)
-  // - Identify two lower winners to pair with them (from last lower round or lower-final)
-  // - If we can form two such pairs, create two semifinal matches (tipo: 'semi') where each pairs an upper-winner fonte with a lower-winner fonte
-  // - Then create a final between the winners of those two semifinals
-  // pick the penultimate winners round as the semifinal-producing round (if exists)
-  const semisRoundIndex = Math.max(0, winnersByRound.length - 2)
-  const upperSemis = winnersByRound[semisRoundIndex] || []
-
-  // collect candidate lower winners (prefer winners of last lower round, then lower-final marker)
-  const lowerCandidates = []
-  if (lowerRounds.length > 0) {
-    const lastLower = lowerRounds[lowerRounds.length - 1]
-    for (const m of lastLower) lowerCandidates.push({ type: 'from', ref: m.id, path: 'vencedor' })
-  }
-  // If we had a lower-final marker earlier, include it as candidate
-  const lowerFinalMarkers = jogos.filter(j => j.tipo === 'lower-final')
-  for (const lf of lowerFinalMarkers) lowerCandidates.push({ type: 'from', ref: lf.id, path: 'vencedor' })
-
-  // Build semifinals only if we have at least two upper semis and two lower candidates
-  if (upperSemis.length >= 2 && lowerCandidates.length >= 2) {
-    // pick the last two upper matches (these produce the upper finalists) but we want their winners to participate in semis
-    const upperPair = upperSemis.slice(-2)
-    const semiMatches = []
-    for (let i = 0; i < 2; i++) {
-      const id = gid()
-      const fontes = []
-      // upper winner fonte
-      if (upperPair[i]) fontes.push({ type: 'from', ref: upperPair[i].id, path: 'vencedor' })
-      // lower candidate fonte (take from start to balance)
-      const lowerFonte = lowerCandidates.shift()
-      if (lowerFonte) fontes.push(lowerFonte)
-  const match = { id, fase: 'finais', round: 1000 + i, region: 'S', a: null, b: null, vencedor: null, fontes, tipo: 'semi' }
-      jogos.push(match)
-      semiMatches.push(match)
-    }
-
-    // final between winners of the two semis
-    const finalId = gid()
-    const finalMatch = { id: finalId, fase: 'finais', round: 2000, region: 'F', a: null, b: null, vencedor: null, fontes: [{ type: 'from', ref: semiMatches[0].id, path: 'vencedor' }, { type: 'from', ref: semiMatches[1].id, path: 'vencedor' }], tipo: 'final' }
-    jogos.push(finalMatch)
-    // third place: losers of the two semis
-    const thirdId = gid()
-    const thirdMatch = { id: thirdId, fase: 'finais', round: 2001, region: 'F', a: null, b: null, vencedor: null, fontes: [{ type: 'from', ref: semiMatches[0].id, path: 'perdedor' }, { type: 'from', ref: semiMatches[1].id, path: 'perdedor' }], tipo: 'third-place' }
-  jogos.push(thirdMatch)
-  } else {
-    // fallback: classic grand final between upper-winner and lower-winner
-    const grandFinalId = gid()
-    const grandFinal = { id: grandFinalId, fase: 'class', round: 1000, region: 'G', a: null, b: null, vencedor: null, fontes: [{ type: 'upper-winner' }, { type: 'lower-winner' }], tipo: 'grand-final' }
-    jogos.push(grandFinal)
-  }
+  // Não geramos semifinais/finais aqui; a fase de finais cuidará disso.
 
   return jogos
 }
