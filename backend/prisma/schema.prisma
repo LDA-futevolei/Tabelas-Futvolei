@@ -59,3 +59,18 @@ model DuplaJogador {
 model Partida {
   idMatch Int @id @default(autoincrement())
 }
+
+// Layouts editáveis (ex.: finais) persistidos como JSON
+model Layout {
+  idLayout      Int         @id @default(autoincrement())
+  stage         String      @db.VarChar(32) // e.g., 'finais', 'classificatoria'
+  data          Json
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  // Escopo por campeonato (opcional para permitir presets globais)
+  campeonato    Campeonato? @relation(fields: [idCampeonato], references: [idCampeonato])
+  idCampeonato  Int?
+
+  @@unique([stage, idCampeonato])
+}

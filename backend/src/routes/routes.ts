@@ -7,6 +7,8 @@ import swaggerOptions from '@/swagger.json';
 import { UserRouter } from '@/routes/usuario';
 import IsAdmin from '@/middlewares/IsAdmin';
 import { ParticipanteRouter } from './participante';
+import { LayoutRouter } from './layout';
+import { CampeonatoRouter } from './campeonato';
 
 export const routes = express.Router();
 
@@ -34,5 +36,6 @@ routes.use('/docs', IsAdmin, swaggerUi.serve, swaggerUi.setup(swaggerOptions));
 routes.use('/user', UserRouter);
 routes.use('/participante', ParticipanteRouter);
 routes.use('/dupla');
-routes.use('/campeonato');
+routes.use('/campeonato', CampeonatoRouter);
 routes.use('/jogo');
+routes.use('/layout', LayoutRouter);

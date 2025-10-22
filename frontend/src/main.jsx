@@ -8,6 +8,9 @@ import NotFound from './pages/404.jsx';
 
 import './styles/index.css'
 import Dashboard from './pages/dashboard/dashboard.jsx';
+import Tabela from './pages/Tabela.jsx';
+import Setup from './pages/Setup.jsx';
+import Torneios from './pages/Torneios.jsx';
 
 ReactDOM.createRoot(document.getElementById('root')).render(
     <React.StrictMode>
@@ -17,6 +20,10 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 
                 <Route path='/dashboard' element={<Dashboard />}></Route>
                 <Route path='/dashboard/login' element={<LoginForm />}></Route>
+
+                <Route path='/tabela' element={<Tabela />}></Route>
+                <Route path='/setup' element={<Setup />}></Route>
+                <Route path='/torneios' element={<Torneios />}></Route>
 
                 <Route path='*' element={<NotFound />}></Route>
             </Routes>

@@ -20,12 +20,56 @@ export default function ModalPlacar({ jogo, onSave, onClose }) {
   const labelA = resolveSlotLabel(jogo.a, jogo.fontes || [], duplas, 0, jogosStore)
   const labelB = resolveSlotLabel(jogo.b, jogo.fontes || [], duplas, 1, jogosStore)
 
+  // Resolve efetivo dos IDs de A/B, mesmo quando jogo.a/b são nulos, usando fontes
+  const jogosById = new Map((Array.isArray(jogosStore) ? jogosStore : []).map(j => [j.id, j]))
+  const resolveFromFonte = (f) => {
+    if (!f) return null
+    if (f.type === 'seed' && f.id != null) return f.id
+    if (f.type === 'from' && f.ref != null) {
+      const src = jogosById.get(f.ref)
+      if (!src) return null
+      if (f.path === 'vencedor') return src.vencedor ?? null
+      if (f.path === 'perdedor') {
+        const sw = src.vencedor
+        if (sw == null) return null
+        let sa = src.a, sb = src.b
+        if ((sa == null || sb == null) && Array.isArray(src.fontes)) {
+          for (let i = 0; i < src.fontes.length; i++) {
+            const sf = src.fontes[i]
+            const val = resolveFromFonte(sf)
+            if (val == null) continue
+            if (i === 0 && sa == null) sa = val
+            else if (i === 1 && sb == null) sb = val
+          }
+        }
+        if (sa == null || sb == null) return null
+        return sw === sa ? sb : sa
+      }
+    }
+    return null
+  }
+  const fontes = Array.isArray(jogo?.fontes) ? jogo.fontes : []
+  let effA = (typeof jogo?.a !== 'undefined' && jogo?.a != null) ? jogo.a : null
+  let effB = (typeof jogo?.b !== 'undefined' && jogo?.b != null) ? jogo.b : null
+  if ((effA == null || effB == null) && fontes.length > 0) {
+    const f0 = fontes[0]
+    const f1 = fontes[1]
+    if (effA == null) effA = resolveFromFonte(f0)
+    if (effB == null) effB = resolveFromFonte(f1)
+    if (effA == null) {
+      for (const f of fontes) { const v = resolveFromFonte(f); if (v != null) { effA = v; break } }
+    }
+    if (effB == null) {
+      for (const f of fontes) { const v = resolveFromFonte(f); if (v != null && v !== effA) { effB = v; break } }
+    }
+  }
+
   const winnerAuto = (() => {
     const a = Number(placarA)
     const b = Number(placarB)
     if (Number.isNaN(a) || Number.isNaN(b)) return null
-    if (a > b) return jogo.a
-    if (b > a) return jogo.b
+    if (a > b) return effA
+    if (b > a) return effB
     return null
   })()
 
@@ -73,8 +117,8 @@ export default function ModalPlacar({ jogo, onSave, onClose }) {
             className="w-full bg-gray-800 p-2 rounded mt-1"
           >
             <option value="">Automático</option>
-            <option value={jogo.a}>{labelA}</option>
-            <option value={jogo.b}>{labelB}</option>
+            <option value={effA ?? ''}>{labelA}</option>
+            <option value={effB ?? ''}>{labelB}</option>
           </select>
         </div>
 

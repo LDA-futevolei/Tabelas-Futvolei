@@ -375,15 +375,71 @@ export function gerarClassificatoria(duplas, options = {}) {
     }
   }
 
-  // add lower-final marker pointing to the ultimate lower winner (if exists)
-  if (rolling.length >= 1) {
-    const lowerFinalId = gid()
-    jogos.push({ id: lowerFinalId, fase: 'class', round: 998, region: 'L', a: null, b: null, vencedor: null, fontes: [{ type: 'lower-winner', region: 'L' }], tipo: 'lower-final' })
+  // Finalizar losers na rodada com 2 jogos (semis da losers). Remover posteriores e criar dois marcadores (L/R)
+  let lastSemiIdxLower = -1
+  for (let i = 0; i < lowerRounds.length; i++) {
+    const r = lowerRounds[i]
+    if (Array.isArray(r) && r.length === 2) lastSemiIdxLower = i
+  }
+  if (lastSemiIdxLower >= 0 && lastSemiIdxLower < lowerRounds.length - 1) {
+    const toRemoveIds = new Set()
+    for (let i = lastSemiIdxLower + 1; i < lowerRounds.length; i++) {
+      const r = lowerRounds[i] || []
+      for (const m of r) toRemoveIds.add(m.id)
+    }
+    if (toRemoveIds.size > 0) {
+      for (let k = jogos.length - 1; k >= 0; k--) {
+        const j = jogos[k]
+        if (j && j.tipo === 'lower' && toRemoveIds.has(j.id)) jogos.splice(k, 1)
+      }
+      lowerRounds.length = lastSemiIdxLower + 1
+    }
+  }
+  // Gerar dois marcadores lower-final (L e R) apontando para os vencedores dos 2 jogos restantes
+  if (lowerRounds.length > 0) {
+    const lastLower = lowerRounds[lowerRounds.length - 1] || []
+    if (lastLower.length === 2) {
+      const left = lastLower[0]
+      const right = lastLower[1]
+      if (left) jogos.push({ id: gid(), fase: 'class', round: 998, region: 'L', a: null, b: null, vencedor: null, fontes: [{ type: 'from', ref: left.id, path: 'vencedor' }], tipo: 'lower-final' })
+      if (right) jogos.push({ id: gid(), fase: 'class', round: 998, region: 'R', a: null, b: null, vencedor: null, fontes: [{ type: 'from', ref: right.id, path: 'vencedor' }], tipo: 'lower-final' })
+    } else if (lastLower.length === 1) {
+      // apenas um jogo restante — criar marcador L
+      const only = lastLower[0]
+      jogos.push({ id: gid(), fase: 'class', round: 998, region: 'L', a: null, b: null, vencedor: null, fontes: [{ type: 'from', ref: only.id, path: 'vencedor' }], tipo: 'lower-final' })
+    }
   }
 
-  // add upper-final markers
-  const regFinalUpper = gid()
-  jogos.push({ id: regFinalUpper, fase: 'class', round: 999, region: 'L', a: null, b: null, vencedor: null, fontes: [{ type: 'upper-winner', region: 'L' }], tipo: 'upper-final' })
+  // Truncar winners (upper) para terminar na rodada com 2 jogos (semis da upper), eliminando a final interna
+  // e criar marcadores upper-final L/R apontando para os vencedores dessas duas partidas
+  // winnersByRound contém arrays de matches; precisamos identificar a última com length===2
+  let lastSemiIdxUpper = -1
+  for (let i = 0; i < winnersByRound.length; i++) {
+    const r = winnersByRound[i]
+    if (Array.isArray(r) && r.length === 2) lastSemiIdxUpper = i
+  }
+  if (lastSemiIdxUpper >= 0) {
+    // Remover quaisquer rounds após esta (a final) dos jogos
+    const toRemove = new Set()
+    for (let i = lastSemiIdxUpper + 1; i < winnersByRound.length; i++) {
+      const arr = winnersByRound[i] || []
+      for (const m of arr) toRemove.add(m.id)
+    }
+    if (toRemove.size > 0) {
+      for (let k = jogos.length - 1; k >= 0; k--) {
+        const j = jogos[k]
+        if (j && j.tipo === 'upper' && toRemove.has(j.id)) jogos.splice(k, 1)
+      }
+    }
+    // Criar marcadores para os dois jogos da semi
+    const semiArr = winnersByRound[lastSemiIdxUpper] || []
+    const left = semiArr[0]
+    const right = semiArr[1]
+    if (left) jogos.push({ id: gid(), fase: 'class', round: 999, region: 'L', a: null, b: null, vencedor: null, fontes: [{ type: 'from', ref: left.id, path: 'vencedor' }], tipo: 'upper-final' })
+    if (right) jogos.push({ id: gid(), fase: 'class', round: 999, region: 'R', a: null, b: null, vencedor: null, fontes: [{ type: 'from', ref: right.id, path: 'vencedor' }], tipo: 'upper-final' })
+  }
+
+  // (marcadores upper-final já criados acima a partir das semis da upper)
 
   // Post-process: hide (skipRender=true) any match that has no direct seeds (a/b null)
   // and whose fontes are all 'from' refs that point to matches currently skipRender (i.e. not visible yet).

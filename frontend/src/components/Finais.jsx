@@ -1,8 +1,11 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useBracketStore } from '../store/useBracketStore'
 import ModalPlacar from './ModalPlacar'
 import SingleSlotCard from './SingleSlotCard'
+import FinalsMatchCard from './FinalsMatchCard'
+import FinalCrest from './FinalCrest'
 import layoutFinais from '../logic/layout/layoutFinais.json'
+import { getAtualCampeonato, getFinaisLayout, putFinaisLayout } from '../logic/api'
 
 export default function Finais() {
   const jogos = useBracketStore(s => s.jogos || [])
@@ -24,7 +27,7 @@ export default function Finais() {
   const srcDuplas = (participants && participants.length > 0) ? participants : duplas
 
   // Layout base (como antes), mas com escala global de renderização
-  const SCALE = 2 // aumente/diminua para ajustar o tamanho geral (2x, 1.5x, etc.)
+  const [SCALE, setSCALE] = useState(2) // controle de zoom
   let CANVAS_W = 1000
   let CANVAS_H = 520
   let SVG_W = CANVAS_W * SCALE
@@ -32,58 +35,187 @@ export default function Finais() {
 
   // Estado de layout editável (inicia com JSON importado)
   const [layoutMap, setLayoutMap] = useState(() => ({ ...(layoutFinais || {}) }))
+  const [campeonatoId, setCampeonatoId] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [lastSavedAt, setLastSavedAt] = useState(null)
+  const [autoSave, setAutoSave] = useState(false)
   const [isEditMode, setIsEditMode] = useState(false)
-  const [dragging, setDragging] = useState(null) // { id, slot, offsetX, offsetY }
+  const [isPathEditMode, setIsPathEditMode] = useState(false)
+  const [dragging, setDragging] = useState(null) // slot: { kind:'slot', id, slot, offsetX, offsetY } | trunk: { kind:'trunk', fromId, key, offsetX, offsetY } | point: { kind:'point', fromId, key, index, offsetX, offsetY }
   const [showGrid, setShowGrid] = useState(false)
   const [snapToGrid, setSnapToGrid] = useState(true)
+  // Link selecionado para adicionar pontos clicando no fundo do SVG (sem paths padrão nas semis)
+  // Formato: "L:final" | "R:final" | "L:third" | "R:third"
+  const [selectedLinkKey, setSelectedLinkKey] = useState('')
   const GRID_STEP = 40
   const svgRef = useRef(null)
 
   // helpers para coordenadas SVG a partir do mouse
-  const getSvgCoords = (e) => {
+  const getSvgCoords = useCallback((e) => {
     const svg = svgRef.current
     if (!svg) return { x: 0, y: 0 }
     const rect = svg.getBoundingClientRect()
     const x = (e.clientX - rect.left) / SCALE
     const y = (e.clientY - rect.top) / SCALE
     return { x, y }
-  }
+  }, [SCALE])
 
   const onMouseDownSlot = (id, slot, pos) => (e) => {
     if (!isEditMode) return
     e.preventDefault()
     e.stopPropagation()
     const { x, y } = getSvgCoords(e)
-    setDragging({ id, slot, offsetX: x - pos.x, offsetY: y - pos.y })
+    setDragging({ kind: 'slot', id, slot, offsetX: x - pos.x, offsetY: y - pos.y })
   }
+
+  // (tronco removido para semis no modo livre)
+
+  // Carregar campeonato atual e layout salvos no backend
+  useEffect(() => {
+    let abort = false
+    ;(async () => {
+      const camp = await getAtualCampeonato()
+      if (abort) return
+      if (camp?.idCampeonato != null) setCampeonatoId(camp.idCampeonato)
+      const remote = await getFinaisLayout(camp?.idCampeonato ?? null)
+      if (abort) return
+      if (remote && typeof remote === 'object' && Object.keys(remote).length > 0) {
+        setLayoutMap(remote)
+      }
+    })()
+    return () => { abort = true }
+  }, [])
+
+  // Salvar manualmente no backend
+  const saveRemote = useCallback(async () => {
+    setSaving(true)
+    await putFinaisLayout(campeonatoId, layoutMap)
+    setSaving(false)
+    setLastSavedAt(new Date())
+  }, [campeonatoId, layoutMap])
+
+  // Auto-save (debounced) quando habilitado
+  useEffect(() => {
+    if (!autoSave || campeonatoId == null) return
+    const t = setTimeout(() => { void saveRemote() }, 1000)
+    return () => clearTimeout(t)
+  }, [layoutMap, autoSave, campeonatoId, saveRemote])
 
   useEffect(() => {
     if (!dragging) return
     const onMove = (e) => {
       const { x, y } = getSvgCoords(e)
-      let nx = x - dragging.offsetX
-      let ny = y - dragging.offsetY
-      if (snapToGrid) {
-        nx = Math.round(nx / GRID_STEP) * GRID_STEP
-        ny = Math.round(ny / GRID_STEP) * GRID_STEP
-      } else {
-        nx = Math.round(nx)
-        ny = Math.round(ny)
-      }
-      setLayoutMap((prev) => {
-        const prevNode = prev?.[dragging.id] || {}
-        const prevSlots = prevNode.slots || {}
-        return {
-          ...prev,
-          [dragging.id]: {
-            ...prevNode,
-            slots: {
-              ...prevSlots,
-              [dragging.slot]: { x: nx, y: ny },
-            },
-          },
+      if (dragging.kind === 'slot') {
+        let nx = x - dragging.offsetX
+        let ny = y - dragging.offsetY
+        if (snapToGrid) {
+          nx = Math.round(nx / GRID_STEP) * GRID_STEP
+          ny = Math.round(ny / GRID_STEP) * GRID_STEP
+        } else {
+          nx = Math.round(nx)
+          ny = Math.round(ny)
         }
-      })
+        setLayoutMap((prev) => {
+          const prevNode = prev?.[dragging.id] || {}
+          const prevSlots = prevNode.slots || {}
+          return {
+            ...prev,
+            [dragging.id]: {
+              ...prevNode,
+              slots: {
+                ...prevSlots,
+                [dragging.slot]: { x: nx, y: ny },
+              },
+            },
+          }
+        })
+      } else if (dragging.kind === 'from') {
+        let nx = x - dragging.offsetX
+        let ny = y - dragging.offsetY
+        if (snapToGrid) {
+          nx = Math.round(nx / GRID_STEP) * GRID_STEP
+          ny = Math.round(ny / GRID_STEP) * GRID_STEP
+        } else {
+          nx = Math.round(nx)
+          ny = Math.round(ny)
+        }
+        setLayoutMap((prev) => {
+          const prevNode = prev?.[dragging.fromId] || {}
+          const prevLinks = prevNode.links || {}
+          const link = prevLinks[dragging.key] || {}
+          return {
+            ...prev,
+            [dragging.fromId]: {
+              ...prevNode,
+              links: {
+                ...prevLinks,
+                [dragging.key]: {
+                  ...link,
+                  from: { x: nx, y: ny },
+                },
+              },
+            },
+          }
+        })
+      } else if (dragging.kind === 'point') {
+        let nx = x - dragging.offsetX
+        let ny = y - dragging.offsetY
+        if (snapToGrid) {
+          nx = Math.round(nx / GRID_STEP) * GRID_STEP
+          ny = Math.round(ny / GRID_STEP) * GRID_STEP
+        } else {
+          nx = Math.round(nx)
+          ny = Math.round(ny)
+        }
+        setLayoutMap((prev) => {
+          const prevNode = prev?.[dragging.fromId] || {}
+          const prevLinks = prevNode.links || {}
+          const link = prevLinks[dragging.key] || {}
+          const pts = Array.isArray(link.points) ? [...link.points] : []
+          pts[dragging.index] = { x: nx, y: ny }
+          return {
+            ...prev,
+            [dragging.fromId]: {
+              ...prevNode,
+              links: {
+                ...prevLinks,
+                [dragging.key]: {
+                  ...link,
+                  points: pts,
+                },
+              },
+            },
+          }
+        })
+      } else if (dragging.kind === 'to') {
+        let nx = x - dragging.offsetX
+        let ny = y - dragging.offsetY
+        if (snapToGrid) {
+          nx = Math.round(nx / GRID_STEP) * GRID_STEP
+          ny = Math.round(ny / GRID_STEP) * GRID_STEP
+        } else {
+          nx = Math.round(nx)
+          ny = Math.round(ny)
+        }
+        setLayoutMap((prev) => {
+          const prevNode = prev?.[dragging.fromId] || {}
+          const prevLinks = prevNode.links || {}
+          const link = prevLinks[dragging.key] || {}
+          return {
+            ...prev,
+            [dragging.fromId]: {
+              ...prevNode,
+              links: {
+                ...prevLinks,
+                [dragging.key]: {
+                  ...link,
+                  to: { x: nx, y: ny },
+                },
+              },
+            },
+          }
+        })
+      }
     }
     const onUp = () => setDragging(null)
     window.addEventListener('mousemove', onMove)
@@ -92,7 +224,7 @@ export default function Finais() {
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
     }
-  }, [dragging, snapToGrid])
+  }, [dragging, snapToGrid, getSvgCoords])
 
   // exportar/importar preset
   const exportPreset = () => {
@@ -117,19 +249,31 @@ export default function Finais() {
     }
     reader.readAsText(file)
   }
-  const CARD_W = 260 // coerente com COLUMN_WIDTH do modo compacto
+  const CARD_W = 262 // largura efetiva do FinalsMatchCard (LEFT_PORT 22 + WIDTH 240)
+  // Centro vertical do badge "VS" no FinalsMatchCard: HEIGHT(26) + GAP(6)/2 = 29
+  const VS_CENTER_Y = 29
   const PADDING_X = 60
-  const PADDING_Y = 60
+  let PADDING_Y = 60
   const GAP_Y = 160 // distância vertical entre final e terceiro lugar
+  // Posição do brasão: 'top' (acima do card) ou 'center' (sobre o VS)
+  const CREST_POS = 'top'
+  // Medidas do brasão (mantém proporção do componente)
+  const CREST_W = 220
+  const CREST_H = Math.round(CREST_W * 1.2)
 
   // posições
   // dimensões dos slots (precisam estar antes de cálculos que os usam)
-  const SLOT_H = 24 // altura do SingleSlotCard
-  const SLOT_GAP = 24 // gap entre os dois slots empilhados (aumentado)
+  const SLOT_H = 24 // altura do SingleSlotCard (não usado para centro do VS)
+  const SLOT_GAP = 24 // gap entre os dois slots empilhados (não usado para centro do VS)
   const SEMI_STACK_H = SLOT_H * 2 + SLOT_GAP
 
   const midX = Math.floor((CANVAS_W - CARD_W) / 2)
-  // fallback padrão (como estava antes)
+  // Se o brasão estiver no topo, precisamos abrir espaço suficiente acima da Final para não cortar
+  const crestTopOffset = CREST_POS === 'top' ? (CREST_H + 16) : 0
+  if (crestTopOffset > 0) {
+    PADDING_Y = Math.max(PADDING_Y, crestTopOffset)
+  }
+  // fallback padrão com margem para o brasão
   const fallbackFinalPos = { x: midX, y: PADDING_Y + 20 }
   const FINAL_STACK_H = SLOT_H * 2 + SLOT_GAP
   const fallbackThirdPos = { x: midX, y: fallbackFinalPos.y + GAP_Y }
@@ -141,17 +285,24 @@ export default function Finais() {
   const fallbackSemiLeft = { x: PADDING_X, y: semiY }
   const fallbackSemiRight = { x: CANVAS_W - PADDING_X - CARD_W, y: semiY }
 
-  // posições vindas do layout editável (se existir), com fallback
-  const posSemiL = semiL ? (layoutMap?.[semiL.id] || fallbackSemiLeft) : null
-  const posSemiR = semiR ? (layoutMap?.[semiR.id] || fallbackSemiRight) : null
-  const posFinal = finalJ ? (layoutMap?.[finalJ.id] || fallbackFinalPos) : null
-  const posThird = third ? (layoutMap?.[third.id] || fallbackThirdPos) : null
+  // utilitário para validar stackPos (x/y numéricos)
+  const isValidPos = (p) => p && typeof p.x === 'number' && Number.isFinite(p.x) && typeof p.y === 'number' && Number.isFinite(p.y)
+  const isFiniteNum = (n) => typeof n === 'number' && Number.isFinite(n)
+  const pickStackPos = (id, fallback) => {
+    const node = layoutMap?.[id]
+    return isValidPos(node) ? node : fallback
+  }
+  // posições vindas do layout editável (se existir), com fallback seguro
+  const posSemiL = semiL ? pickStackPos(semiL.id, fallbackSemiLeft) : null
+  const posSemiR = semiR ? pickStackPos(semiR.id, fallbackSemiRight) : null
+  const posFinal = finalJ ? pickStackPos(finalJ.id, fallbackFinalPos) : null
+  const posThird = third ? pickStackPos(third.id, fallbackThirdPos) : null
 
   // posição efetiva de cada slot (permite mover slot individual, com fallback para stack)
   const getSlotPos = (id, stackPos, slotIndex) => {
     const s = layoutMap?.[id]?.slots?.[slotIndex]
-    if (s && typeof s.x === 'number' && typeof s.y === 'number') return s
-    if (!stackPos) return null
+    if (s && typeof s.x === 'number' && Number.isFinite(s.x) && typeof s.y === 'number' && Number.isFinite(s.y)) return s
+    if (!isValidPos(stackPos)) return null
     return {
       x: stackPos.x,
       y: stackPos.y + (slotIndex === 0 ? 0 : (SLOT_H + SLOT_GAP)),
@@ -159,29 +310,47 @@ export default function Finais() {
   }
 
   // calcular canvas dinamicamente baseado nas posições
-  const SLOT_LEFT = 24
-  const SLOT_RIGHT = 228
+  // Ports alinhados ao FinalsMatchCard (ver FinalsMatchCard.jsx: LEFT=22, WIDTH=240)
+  const SLOT_LEFT = 22
+  const SLOT_RIGHT = 262
   // const stackHeight = (SLOT_H * 2 + SLOT_GAP)
   const extents = []
   // considerar extents por slot (caso tenham sido movidos)
   const pushSlotExtents = (id, stackPos) => {
     const s0 = getSlotPos(id, stackPos, 0)
     const s1 = getSlotPos(id, stackPos, 1)
-    if (s0) extents.push({ x: s0.x + SLOT_RIGHT, y: s0.y + SLOT_H })
-    if (s1) extents.push({ x: s1.x + SLOT_RIGHT, y: s1.y + SLOT_H })
+    if (s0 && Number.isFinite(s0.x) && Number.isFinite(s0.y)) {
+      extents.push({ x: s0.x + SLOT_RIGHT, y: s0.y + SLOT_H })
+    }
+    if (s1 && Number.isFinite(s1.x) && Number.isFinite(s1.y)) {
+      extents.push({ x: s1.x + SLOT_RIGHT, y: s1.y + SLOT_H })
+    }
   }
   if (semiL && posSemiL) pushSlotExtents(semiL.id, posSemiL)
   if (semiR && posSemiR) pushSlotExtents(semiR.id, posSemiR)
   if (finalJ && posFinal) pushSlotExtents(finalJ.id, posFinal)
   if (third && posThird) pushSlotExtents(third.id, posThird)
   if (extents.length > 0) {
-    const maxX = Math.max(...extents.map(e => e.x))
-    const maxY = Math.max(...extents.map(e => e.y))
-    CANVAS_W = Math.max(CANVAS_W, maxX + 80)
-    CANVAS_H = Math.max(CANVAS_H, maxY + 80)
+    const xs = extents.map(e => e.x).filter(Number.isFinite)
+    const ys = extents.map(e => e.y).filter(Number.isFinite)
+    if (xs.length && ys.length) {
+      const maxX = Math.max(...xs)
+      const maxY = Math.max(...ys)
+      CANVAS_W = Math.max(CANVAS_W, maxX + 80)
+      CANVAS_H = Math.max(CANVAS_H, maxY + 80)
+    }
     SVG_W = CANVAS_W * SCALE
     SVG_H = CANVAS_H * SCALE
   }
+
+  // Garantir métricas seguras para SVG e grade
+  const DEFAULT_W = 1000
+  const DEFAULT_H = 520
+  const safeCW = isFiniteNum(CANVAS_W) && CANVAS_W > 0 ? CANVAS_W : DEFAULT_W
+  const safeCH = isFiniteNum(CANVAS_H) && CANVAS_H > 0 ? CANVAS_H : DEFAULT_H
+  const safeS = isFiniteNum(SCALE) && SCALE > 0 ? SCALE : 1
+  const safeSW = safeCW * safeS
+  const safeSH = safeCH * safeS
 
   // pontos médios para conectar
   // Conectores direcionais (lado direito/esquerdo) seguindo as posições livremente editáveis
@@ -199,65 +368,664 @@ export default function Finais() {
       stroke: style.stroke ?? defaults.stroke,
       width: style.width ?? defaults.width,
       dash: style.dash ?? defaults.dash,
+      trunkX: link.trunkX,
+      trunkY: link.trunkY,
+      from: link.from,
+      to: link.to,
+      points: Array.isArray(link.points) ? link.points : [],
     }
   }
 
   // Desenha linha reta ou em "cotovelo" baseado no config
-  const makePath = (fromX, fromY, toX, toY, cfg, goRight) => {
-    if (cfg.elbow) {
-      const midX = fromX + (goRight ? cfg.offset : -cfg.offset)
-      return `M ${fromX} ${fromY} L ${midX} ${fromY} L ${midX} ${toY} L ${toX} ${toY}`
-    }
-    return `M ${fromX} ${fromY} L ${toX} ${toY}`
-  }
+  // makePath não é mais utilizado aqui (roteamento por tronco); mantido por compat no layout
 
-  const lines = []
-  // Conectar semis aos slots da Final (winners): topo recebe vencedor da esquerda, baixo recebe vencedor da direita
-  if (semiL && finalJ && posSemiL && posFinal) {
-    const goRight = posFinal.x >= posSemiL.x
-    const fromX = goRight ? (posSemiL.x + RIGHT_PORT) : (posSemiL.x + LEFT_PORT)
-    const fromY = posSemiL.y + (SEMI_STACK_H / 2)
-    const finalTop = getSlotPos(finalJ.id, posFinal, 0)
-    const toX = goRight ? (finalTop.x + LEFT_PORT) : (finalTop.x + RIGHT_PORT)
-    const toY = finalTop.y + (SLOT_H / 2)
-    const cfg = getLinkConfig(semiL.id, 'toFinal', { elbow: true, offset: 12, stroke: '#333', width: 1, dash: undefined })
-    const d = makePath(fromX, fromY, toX, toY, cfg, goRight)
-    lines.push(<path key="l-semiL-final" d={d} stroke={cfg.stroke} strokeWidth={cfg.width} fill="none" strokeDasharray={cfg.dash} />)
+  // tema visual preto/rosa/branco (conectores rosa)
+  const GOLD = '#ff2b77'
+  const makeElbowPath = (fx, fy, tx, ty) => {
+    if (![fx, fy, tx, ty].every(isFiniteNum)) return null
+    const mx = Math.round((fx + tx) / 2)
+    return `M ${fx} ${fy} L ${mx} ${fy} L ${mx} ${ty} L ${tx} ${ty}`
   }
-  if (semiR && finalJ && posSemiR && posFinal) {
-    const goRight = posFinal.x >= posSemiR.x
-    const fromX = goRight ? (posSemiR.x + RIGHT_PORT) : (posSemiR.x + LEFT_PORT)
-    const fromY = posSemiR.y + (SEMI_STACK_H / 2)
-    const finalBottom = getSlotPos(finalJ.id, posFinal, 1)
-    const toX = goRight ? (finalBottom.x + LEFT_PORT) : (finalBottom.x + RIGHT_PORT)
-    const toY = finalBottom.y + (SLOT_H / 2)
-    const cfg = getLinkConfig(semiR.id, 'toFinal', { elbow: true, offset: 12, stroke: '#333', width: 1, dash: undefined })
-    const d = makePath(fromX, fromY, toX, toY, cfg, goRight)
-    lines.push(<path key="l-semiR-final" d={d} stroke={cfg.stroke} strokeWidth={cfg.width} fill="none" strokeDasharray={cfg.dash} />)
+  const lines = []
+  const pointHandles = []
+  // Conectar semis aos slots da Final (winners) – modo livre: sem tronco padrão quando não há pontos
+  if (finalJ && isValidPos(posFinal)) {
+    // esquerda -> final (ancorar no meio do card (VS) na borda esquerda)
+    if (semiL && isValidPos(posSemiL)) {
+  const defToX = posFinal.x + LEFT_PORT
+  const defToY = posFinal.y + VS_CENTER_Y
+      const cfg = getLinkConfig(semiL.id, 'toFinal', { elbow: true, offset: 14, stroke: GOLD, width: 2, dash: undefined })
+      const defFromX = posSemiL.x + RIGHT_PORT
+      const defFromY = posSemiL.y + VS_CENTER_Y
+      const eFromX = isFiniteNum(cfg?.from?.x) ? cfg.from.x : defFromX
+      const eFromY = isFiniteNum(cfg?.from?.y) ? cfg.from.y : defFromY
+      const eToX = isFiniteNum(cfg?.to?.x) ? cfg.to.x : defToX
+      const eToY = isFiniteNum(cfg?.to?.y) ? cfg.to.y : defToY
+      if (isFiniteNum(eFromX) && isFiniteNum(eFromY) && isFiniteNum(eToX) && isFiniteNum(eToY)) {
+        if (cfg.points.length > 0) {
+          const pts = cfg.points.filter(isValidPos)
+          const d = `M ${eFromX} ${eFromY}` + pts.map(p => ` L ${p.x} ${p.y}`).join('') + ` L ${eToX} ${eToY}`
+          lines.push(
+            <path
+              key="l-semiL-final"
+              d={d}
+              stroke={cfg.stroke}
+              strokeWidth={cfg.width}
+              fill="none"
+              onClick={(e) => {
+                if (!isEditMode || !isPathEditMode) return
+                e.stopPropagation()
+                const { x, y } = getSvgCoords(e)
+                const px = snapToGrid ? Math.round(x / GRID_STEP) * GRID_STEP : Math.round(x)
+                const py = snapToGrid ? Math.round(y / GRID_STEP) * GRID_STEP : Math.round(y)
+                setLayoutMap(prev => {
+                  const prevNode = prev?.[semiL.id] || {}
+                  const prevLinks = prevNode.links || {}
+                  const link = prevLinks['toFinal'] || {}
+                  const ptsPrev = Array.isArray(link.points) ? [...link.points] : []
+                  ptsPrev.push({ x: px, y: py })
+                  return {
+                    ...prev,
+                    [semiL.id]: {
+                      ...prevNode,
+                      links: {
+                        ...prevLinks,
+                        toFinal: { ...link, points: ptsPrev },
+                      },
+                    },
+                  }
+                })
+              }}
+              style={{ cursor: isEditMode && isPathEditMode ? 'copy' : 'default' }}
+            />
+          )
+          if (isEditMode && isPathEditMode && (!selectedLinkKey || selectedLinkKey === 'L:final')) {
+            // handle do ponto final (to)
+            pointHandles.push(
+              <circle
+                key="h-to-semiL-final"
+                cx={eToX}
+                cy={eToY}
+                r={6}
+                fill="#fb923c"
+                stroke="#111"
+                onMouseDown={(e) => {
+                  e.stopPropagation()
+                  const { x, y } = getSvgCoords(e)
+                  setDragging({ kind: 'to', fromId: semiL.id, key: 'toFinal', offsetX: x - eToX, offsetY: y - eToY })
+                }}
+                style={{ cursor: 'move' }}
+                title="Arraste o ponto final"
+              />
+            )
+          }
+          if (isEditMode && isPathEditMode && (!selectedLinkKey || selectedLinkKey === 'L:final')) {
+            // handle do ponto inicial (from)
+            pointHandles.push(
+              <circle
+                key="h-from-semiL-final"
+                cx={eFromX}
+                cy={eFromY}
+                r={6}
+                fill="#22d3ee"
+                stroke="#111"
+                onMouseDown={(e) => {
+                  e.stopPropagation()
+                  const { x, y } = getSvgCoords(e)
+                  setDragging({ kind: 'from', fromId: semiL.id, key: 'toFinal', offsetX: x - eFromX, offsetY: y - eFromY })
+                }}
+                style={{ cursor: 'move' }}
+                title="Arraste o ponto inicial"
+              />
+            )
+          }
+          if (isEditMode && isPathEditMode) {
+            cfg.points.forEach((p, idx) => {
+              if (!isValidPos(p)) return
+              pointHandles.push(
+                <circle
+                  key={`pt-semiL-final-${idx}`}
+                  cx={p.x}
+                  cy={p.y}
+                  r={5}
+                  fill="#06b6d4"
+                  stroke="#111"
+                  onMouseDown={(e) => {
+                    e.stopPropagation()
+                    const { x, y } = getSvgCoords(e)
+                    setDragging({ kind: 'point', fromId: semiL.id, key: 'toFinal', index: idx, offsetX: x - p.x, offsetY: y - p.y })
+                  }}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation()
+                    setLayoutMap(prev => {
+                      const prevNode = prev?.[semiL.id] || {}
+                      const prevLinks = prevNode.links || {}
+                      const link = prevLinks['toFinal'] || {}
+                      const ptsPrev = Array.isArray(link.points) ? [...link.points] : []
+                      ptsPrev.splice(idx, 1)
+                      return {
+                        ...prev,
+                        [semiL.id]: {
+                          ...prevNode,
+                          links: {
+                            ...prevLinks,
+                            toFinal: { ...link, points: ptsPrev },
+                          },
+                        },
+                      }
+                    })
+                  }}
+                  style={{ cursor: 'move' }}
+                  title="Duplo clique para remover ponto"
+                />
+              )
+            })
+          }
+        } else {
+          // Fallback: desenhar um cotovelo padrão quando não houver pontos no JSON
+          const d = makeElbowPath(eFromX, eFromY, eToX, eToY)
+          if (d) {
+            lines.push(
+              <path
+                key="l-semiL-final-def"
+                d={d}
+                stroke={cfg.stroke}
+                strokeWidth={cfg.width}
+                fill="none"
+              />
+            )
+          }
+        }
+      }
+    }
+    // direita -> final: ancorar no meio do card (VS) na borda DIREITA da Final
+    if (semiR && isValidPos(posSemiR)) {
+  const defToX = posFinal.x + RIGHT_PORT
+  const defToY = posFinal.y + VS_CENTER_Y
+      const cfg = getLinkConfig(semiR.id, 'toFinal', { elbow: true, offset: 14, stroke: GOLD, width: 2, dash: undefined })
+      const defFromX = posSemiR.x + LEFT_PORT
+      const defFromY = posSemiR.y + VS_CENTER_Y
+      const eFromX = isFiniteNum(cfg?.from?.x) ? cfg.from.x : defFromX
+      const eFromY = isFiniteNum(cfg?.from?.y) ? cfg.from.y : defFromY
+      const eToX = isFiniteNum(cfg?.to?.x) ? cfg.to.x : defToX
+      const eToY = isFiniteNum(cfg?.to?.y) ? cfg.to.y : defToY
+      if (isFiniteNum(eFromX) && isFiniteNum(eFromY) && isFiniteNum(eToX) && isFiniteNum(eToY)) {
+        if (cfg.points.length > 0) {
+          const pts = cfg.points.filter(isValidPos)
+          const d = `M ${eFromX} ${eFromY}` + pts.map(p => ` L ${p.x} ${p.y}`).join('') + ` L ${eToX} ${eToY}`
+          lines.push(
+            <path
+              key="l-semiR-final"
+              d={d}
+              stroke={cfg.stroke}
+              strokeWidth={cfg.width}
+              fill="none"
+              onClick={(e) => {
+                if (!isEditMode || !isPathEditMode) return
+                e.stopPropagation()
+                const { x, y } = getSvgCoords(e)
+                const px = snapToGrid ? Math.round(x / GRID_STEP) * GRID_STEP : Math.round(x)
+                const py = snapToGrid ? Math.round(y / GRID_STEP) * GRID_STEP : Math.round(y)
+                setLayoutMap(prev => {
+                  const prevNode = prev?.[semiR.id] || {}
+                  const prevLinks = prevNode.links || {}
+                  const link = prevLinks['toFinal'] || {}
+                  const ptsPrev = Array.isArray(link.points) ? [...link.points] : []
+                  ptsPrev.push({ x: px, y: py })
+                  return {
+                    ...prev,
+                    [semiR.id]: {
+                      ...prevNode,
+                      links: {
+                        ...prevLinks,
+                        toFinal: { ...link, points: ptsPrev },
+                      },
+                    },
+                  }
+                })
+              }}
+              style={{ cursor: isEditMode && isPathEditMode ? 'copy' : 'default' }}
+            />
+          )
+          if (isEditMode && isPathEditMode && (!selectedLinkKey || selectedLinkKey === 'R:final')) {
+            pointHandles.push(
+              <circle
+                key="h-to-semiR-final"
+                cx={eToX}
+                cy={eToY}
+                r={6}
+                fill="#fb923c"
+                stroke="#111"
+                onMouseDown={(e) => {
+                  e.stopPropagation()
+                  const { x, y } = getSvgCoords(e)
+                  setDragging({ kind: 'to', fromId: semiR.id, key: 'toFinal', offsetX: x - eToX, offsetY: y - eToY })
+                }}
+                style={{ cursor: 'move' }}
+                title="Arraste o ponto final"
+              />
+            )
+          }
+          if (isEditMode && isPathEditMode && (!selectedLinkKey || selectedLinkKey === 'R:final')) {
+            pointHandles.push(
+              <circle
+                key="h-from-semiR-final"
+                cx={eFromX}
+                cy={eFromY}
+                r={6}
+                fill="#22d3ee"
+                stroke="#111"
+                onMouseDown={(e) => {
+                  e.stopPropagation()
+                  const { x, y } = getSvgCoords(e)
+                  setDragging({ kind: 'from', fromId: semiR.id, key: 'toFinal', offsetX: x - eFromX, offsetY: y - eFromY })
+                }}
+                style={{ cursor: 'move' }}
+                title="Arraste o ponto inicial"
+              />
+            )
+          }
+          if (isEditMode && isPathEditMode) {
+            cfg.points.forEach((p, idx) => {
+              if (!isValidPos(p)) return
+              pointHandles.push(
+                <circle
+                  key={`pt-semiR-final-${idx}`}
+                  cx={p.x}
+                  cy={p.y}
+                  r={5}
+                  fill="#06b6d4"
+                  stroke="#111"
+                  onMouseDown={(e) => {
+                    e.stopPropagation()
+                    const { x, y } = getSvgCoords(e)
+                    setDragging({ kind: 'point', fromId: semiR.id, key: 'toFinal', index: idx, offsetX: x - p.x, offsetY: y - p.y })
+                  }}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation()
+                    setLayoutMap(prev => {
+                      const prevNode = prev?.[semiR.id] || {}
+                      const prevLinks = prevNode.links || {}
+                      const link = prevLinks['toFinal'] || {}
+                      const ptsPrev = Array.isArray(link.points) ? [...link.points] : []
+                      ptsPrev.splice(idx, 1)
+                      return {
+                        ...prev,
+                        [semiR.id]: {
+                          ...prevNode,
+                          links: {
+                            ...prevLinks,
+                            toFinal: { ...link, points: ptsPrev },
+                          },
+                        },
+                      }
+                    })
+                  }}
+                  style={{ cursor: 'move' }}
+                  title="Duplo clique para remover ponto"
+                />
+              )
+            })
+          }
+        } else {
+          // Fallback: desenhar um cotovelo padrão quando não houver pontos no JSON
+          const d = makeElbowPath(eFromX, eFromY, eToX, eToY)
+          if (d) {
+            lines.push(
+              <path
+                key="l-semiR-final-def"
+                d={d}
+                stroke={cfg.stroke}
+                strokeWidth={cfg.width}
+                fill="none"
+              />
+            )
+          }
+        }
+      }
+    }
   }
   // Conectar semis aos slots do 3º lugar (losers): topo recebe perdedor da esquerda, baixo recebe perdedor da direita (tracejado)
-  if (semiL && third && posSemiL && posThird) {
-    const goRight = posThird.x >= posSemiL.x
-    const fromX = goRight ? (posSemiL.x + RIGHT_PORT) : (posSemiL.x + LEFT_PORT)
-    const fromY = posSemiL.y + (SEMI_STACK_H / 2)
-    const thirdTop = getSlotPos(third.id, posThird, 0)
-    const toX = goRight ? (thirdTop.x + LEFT_PORT) : (thirdTop.x + RIGHT_PORT)
-    const toY = thirdTop.y + (SLOT_H / 2)
-    const cfg = getLinkConfig(semiL.id, 'toThird', { elbow: true, offset: 12, stroke: '#333', width: 1, dash: '4 3' })
-    const d = makePath(fromX, fromY, toX, toY, cfg, goRight)
-    lines.push(<path key="l-semiL-third" d={d} stroke={cfg.stroke} strokeWidth={cfg.width} fill="none" strokeDasharray={cfg.dash} />)
+  // Conectar semis ao 3º lugar com tronco próximo ao card do 3º
+  if (third && isValidPos(posThird)) {
+    if (semiL && isValidPos(posSemiL)) {
+      const defToX = posThird.x + LEFT_PORT
+      const defToY = posThird.y + VS_CENTER_Y
+      const cfg = getLinkConfig(semiL.id, 'toThird', { elbow: true, offset: 12, stroke: GOLD, width: 2, dash: '6 4' })
+      const defFromX = posSemiL.x + RIGHT_PORT
+      const defFromY = posSemiL.y + VS_CENTER_Y
+      const eFromX = isFiniteNum(cfg?.from?.x) ? cfg.from.x : defFromX
+      const eFromY = isFiniteNum(cfg?.from?.y) ? cfg.from.y : defFromY
+      const eToX = isFiniteNum(cfg?.to?.x) ? cfg.to.x : defToX
+      const eToY = isFiniteNum(cfg?.to?.y) ? cfg.to.y : defToY
+      if (isFiniteNum(eFromX) && isFiniteNum(eFromY) && isFiniteNum(eToX) && isFiniteNum(eToY)) {
+        if (cfg.points.length > 0) {
+          const pts = cfg.points.filter(isValidPos)
+          const d = `M ${eFromX} ${eFromY}` + pts.map(p => ` L ${p.x} ${p.y}`).join('') + ` L ${eToX} ${eToY}`
+          lines.push(
+            <path
+              key="l-semiL-third"
+              d={d}
+              stroke={cfg.stroke}
+              strokeWidth={cfg.width}
+              fill="none"
+              strokeDasharray={cfg.dash}
+              onClick={(e) => {
+                if (!isEditMode || !isPathEditMode) return
+                e.stopPropagation()
+                const { x, y } = getSvgCoords(e)
+                const px = snapToGrid ? Math.round(x / GRID_STEP) * GRID_STEP : Math.round(x)
+                const py = snapToGrid ? Math.round(y / GRID_STEP) * GRID_STEP : Math.round(y)
+                setLayoutMap(prev => {
+                  const prevNode = prev?.[semiL.id] || {}
+                  const prevLinks = prevNode.links || {}
+                  const link = prevLinks['toThird'] || {}
+                  const ptsPrev = Array.isArray(link.points) ? [...link.points] : []
+                  ptsPrev.push({ x: px, y: py })
+                  return {
+                    ...prev,
+                    [semiL.id]: {
+                      ...prevNode,
+                      links: {
+                        ...prevLinks,
+                        toThird: { ...link, points: ptsPrev },
+                      },
+                    },
+                  }
+                })
+              }}
+              style={{ cursor: isEditMode && isPathEditMode ? 'copy' : 'default' }}
+            />
+          )
+          if (isEditMode && isPathEditMode && (!selectedLinkKey || selectedLinkKey === 'L:third')) {
+            pointHandles.push(
+              <circle
+                key="h-to-semiL-third"
+                cx={eToX}
+                cy={eToY}
+                r={6}
+                fill="#fb923c"
+                stroke="#111"
+                onMouseDown={(e) => {
+                  e.stopPropagation()
+                  const { x, y } = getSvgCoords(e)
+                  setDragging({ kind: 'to', fromId: semiL.id, key: 'toThird', offsetX: x - eToX, offsetY: y - eToY })
+                }}
+                style={{ cursor: 'move' }}
+                title="Arraste o ponto final"
+              />
+            )
+          }
+          if (isEditMode && isPathEditMode && (!selectedLinkKey || selectedLinkKey === 'L:third')) {
+            pointHandles.push(
+              <circle
+                key="h-from-semiL-third"
+                cx={eFromX}
+                cy={eFromY}
+                r={6}
+                fill="#22d3ee"
+                stroke="#111"
+                onMouseDown={(e) => {
+                  e.stopPropagation()
+                  const { x, y } = getSvgCoords(e)
+                  setDragging({ kind: 'from', fromId: semiL.id, key: 'toThird', offsetX: x - eFromX, offsetY: y - eFromY })
+                }}
+                style={{ cursor: 'move' }}
+                title="Arraste o ponto inicial"
+              />
+            )
+          }
+          if (isEditMode && isPathEditMode) {
+            cfg.points.forEach((p, idx) => {
+              if (!isValidPos(p)) return
+              pointHandles.push(
+                <circle
+                  key={`pt-semiL-third-${idx}`}
+                  cx={p.x}
+                  cy={p.y}
+                  r={5}
+                  fill="#06b6d4"
+                  stroke="#111"
+                  onMouseDown={(e) => {
+                    e.stopPropagation()
+                    const { x, y } = getSvgCoords(e)
+                    setDragging({ kind: 'point', fromId: semiL.id, key: 'toThird', index: idx, offsetX: x - p.x, offsetY: y - p.y })
+                  }}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation()
+                    setLayoutMap(prev => {
+                      const prevNode = prev?.[semiL.id] || {}
+                      const prevLinks = prevNode.links || {}
+                      const link = prevLinks['toThird'] || {}
+                      const ptsPrev = Array.isArray(link.points) ? [...link.points] : []
+                      ptsPrev.splice(idx, 1)
+                      return {
+                        ...prev,
+                        [semiL.id]: {
+                          ...prevNode,
+                          links: {
+                            ...prevLinks,
+                            toThird: { ...link, points: ptsPrev },
+                          },
+                        },
+                      }
+                    })
+                  }}
+                  style={{ cursor: 'move' }}
+                  title="Duplo clique para remover ponto"
+                />
+              )
+            })
+          }
+        } else {
+          // Fallback: desenhar um cotovelo padrão quando não houver pontos no JSON
+          const d = makeElbowPath(eFromX, eFromY, eToX, eToY)
+          if (d) {
+            lines.push(
+              <path
+                key="l-semiL-third-def"
+                d={d}
+                stroke={cfg.stroke}
+                strokeWidth={cfg.width}
+                fill="none"
+                strokeDasharray={cfg.dash}
+              />
+            )
+          }
+        }
+      }
+    }
+    if (semiR && isValidPos(posSemiR)) {
+      const defToX = posThird.x + LEFT_PORT
+      const defToY = posThird.y + VS_CENTER_Y
+      const cfg = getLinkConfig(semiR.id, 'toThird', { elbow: true, offset: 12, stroke: GOLD, width: 2, dash: '6 4' })
+      // Ajuste: começar pelo lado direito do card da semi R (não invertido)
+      const defFromX = posSemiR.x + RIGHT_PORT
+      const defFromY = posSemiR.y + VS_CENTER_Y
+      const eFromX = isFiniteNum(cfg?.from?.x) ? cfg.from.x : defFromX
+      const eFromY = isFiniteNum(cfg?.from?.y) ? cfg.from.y : defFromY
+      const eToX = isFiniteNum(cfg?.to?.x) ? cfg.to.x : defToX
+      const eToY = isFiniteNum(cfg?.to?.y) ? cfg.to.y : defToY
+      if (isFiniteNum(eFromX) && isFiniteNum(eFromY) && isFiniteNum(eToX) && isFiniteNum(eToY)) {
+        if (cfg.points.length > 0) {
+          const pts = cfg.points.filter(isValidPos)
+          const d = `M ${eFromX} ${eFromY}` + pts.map(p => ` L ${p.x} ${p.y}`).join('') + ` L ${eToX} ${eToY}`
+          lines.push(
+            <path
+              key="l-semiR-third"
+              d={d}
+              stroke={cfg.stroke}
+              strokeWidth={cfg.width}
+              fill="none"
+              strokeDasharray={cfg.dash}
+              onClick={(e) => {
+                if (!isEditMode || !isPathEditMode) return
+                e.stopPropagation()
+                const { x, y } = getSvgCoords(e)
+                const px = snapToGrid ? Math.round(x / GRID_STEP) * GRID_STEP : Math.round(x)
+                const py = snapToGrid ? Math.round(y / GRID_STEP) * GRID_STEP : Math.round(y)
+                setLayoutMap(prev => {
+                  const prevNode = prev?.[semiR.id] || {}
+                  const prevLinks = prevNode.links || {}
+                  const link = prevLinks['toThird'] || {}
+                  const ptsPrev = Array.isArray(link.points) ? [...link.points] : []
+                  ptsPrev.push({ x: px, y: py })
+                  return {
+                    ...prev,
+                    [semiR.id]: {
+                      ...prevNode,
+                      links: {
+                        ...prevLinks,
+                        toThird: { ...link, points: ptsPrev },
+                      },
+                    },
+                  }
+                })
+              }}
+              style={{ cursor: isEditMode && isPathEditMode ? 'copy' : 'default' }}
+            />
+          )
+          if (isEditMode && isPathEditMode && (!selectedLinkKey || selectedLinkKey === 'R:third')) {
+            pointHandles.push(
+              <circle
+                key="h-to-semiR-third"
+                cx={eToX}
+                cy={eToY}
+                r={6}
+                fill="#fb923c"
+                stroke="#111"
+                onMouseDown={(e) => {
+                  e.stopPropagation()
+                  const { x, y } = getSvgCoords(e)
+                  setDragging({ kind: 'to', fromId: semiR.id, key: 'toThird', offsetX: x - eToX, offsetY: y - eToY })
+                }}
+                style={{ cursor: 'move' }}
+                title="Arraste o ponto final"
+              />
+            )
+          }
+          if (isEditMode && isPathEditMode && (!selectedLinkKey || selectedLinkKey === 'R:third')) {
+            pointHandles.push(
+              <circle
+                key="h-from-semiR-third"
+                cx={eFromX}
+                cy={eFromY}
+                r={6}
+                fill="#22d3ee"
+                stroke="#111"
+                onMouseDown={(e) => {
+                  e.stopPropagation()
+                  const { x, y } = getSvgCoords(e)
+                  setDragging({ kind: 'from', fromId: semiR.id, key: 'toThird', offsetX: x - eFromX, offsetY: y - eFromY })
+                }}
+                style={{ cursor: 'move' }}
+                title="Arraste o ponto inicial"
+              />
+            )
+          }
+          if (isEditMode && isPathEditMode) {
+            cfg.points.forEach((p, idx) => {
+              if (!isValidPos(p)) return
+              pointHandles.push(
+                <circle
+                  key={`pt-semiR-third-${idx}`}
+                  cx={p.x}
+                  cy={p.y}
+                  r={5}
+                  fill="#06b6d4"
+                  stroke="#111"
+                  onMouseDown={(e) => {
+                    e.stopPropagation()
+                    const { x, y } = getSvgCoords(e)
+                    setDragging({ kind: 'point', fromId: semiR.id, key: 'toThird', index: idx, offsetX: x - p.x, offsetY: y - p.y })
+                  }}
+                  onDoubleClick={(e) => {
+                    e.stopPropagation()
+                    setLayoutMap(prev => {
+                      const prevNode = prev?.[semiR.id] || {}
+                      const prevLinks = prevNode.links || {}
+                      const link = prevLinks['toThird'] || {}
+                      const ptsPrev = Array.isArray(link.points) ? [...link.points] : []
+                      ptsPrev.splice(idx, 1)
+                      return {
+                        ...prev,
+                        [semiR.id]: {
+                          ...prevNode,
+                          links: {
+                            ...prevLinks,
+                            toThird: { ...link, points: ptsPrev },
+                          },
+                        },
+                      }
+                    })
+                  }}
+                  style={{ cursor: 'move' }}
+                  title="Duplo clique para remover ponto"
+                />
+              )
+            })
+          }
+        } else {
+          // Fallback: desenhar um cotovelo padrão quando não houver pontos no JSON
+          const d = makeElbowPath(eFromX, eFromY, eToX, eToY)
+          if (d) {
+            lines.push(
+              <path
+                key="l-semiR-third-def"
+                d={d}
+                stroke={cfg.stroke}
+                strokeWidth={cfg.width}
+                fill="none"
+                strokeDasharray={cfg.dash}
+              />
+            )
+          }
+        }
+      }
+    }
   }
-  if (semiR && third && posSemiR && posThird) {
-    const goRight = posThird.x >= posSemiR.x
-    const fromX = goRight ? (posSemiR.x + RIGHT_PORT) : (posSemiR.x + LEFT_PORT)
-    const fromY = posSemiR.y + (SEMI_STACK_H / 2)
-    const thirdBottom = getSlotPos(third.id, posThird, 1)
-    const toX = goRight ? (thirdBottom.x + LEFT_PORT) : (thirdBottom.x + RIGHT_PORT)
-    const toY = thirdBottom.y + (SLOT_H / 2)
-    const cfg = getLinkConfig(semiR.id, 'toThird', { elbow: true, offset: 12, stroke: '#333', width: 1, dash: '4 3' })
-    const d = makePath(fromX, fromY, toX, toY, cfg, goRight)
-    lines.push(<path key="l-semiR-third" d={d} stroke={cfg.stroke} strokeWidth={cfg.width} fill="none" strokeDasharray={cfg.dash} />)
+
+  // placas decorativas em formato de trapézio (sem fill gradients para simplicidade)
+  const plates = []
+  // placa acima do final removida (para não gerar path decorativo extra)
+  // placas pequenas 'SEMIFINAL' acima de cada semi (para combinar com o design)
+  const pushSemiPlate = (key, pos) => {
+    if (!isValidPos(pos)) return
+    const plateW = 110, plateH = 22, bevel = 10
+    const cx = pos.x + CARD_W / 2
+    const topY = pos.y - 26
+    const x0 = cx - plateW / 2, x1 = cx + plateW / 2
+    const y0 = topY, y1 = topY + plateH
+    if ([x0, y0, x1, y1].every(isFiniteNum)) {
+      const d = `M ${x0} ${y0} L ${x1} ${y0} L ${x1 - bevel} ${y1} L ${x0 + bevel} ${y1} Z`
+      plates.push(
+        <g key={key}>
+          <path d={d} fill="url(#gold-grad)" stroke="#111" strokeWidth={1} opacity={0.95} filter="url(#gold-glow)" />
+          <text x={cx} y={topY + plateH/2} textAnchor="middle" dominantBaseline="middle" className="fill-black" style={{ fontSize: 12, fontWeight: 800, letterSpacing: '0.5px' }}>SEMIFINAL</text>
+        </g>
+      )
+    }
   }
+  if (semiL && isValidPos(posSemiL)) pushSemiPlate('plate-semiL', posSemiL)
+  if (semiR && isValidPos(posSemiR)) pushSemiPlate('plate-semiR', posSemiR)
+  // placa para 3º lugar
+  if (third && isValidPos(posThird)) {
+    const plateW = 120, plateH = 22, bevel = 10
+    const cx = posThird.x + CARD_W / 2
+    const topY = posThird.y - 26
+    const x0 = cx - plateW / 2, x1 = cx + plateW / 2
+    const y0 = topY, y1 = topY + plateH
+    if ([x0, y0, x1, y1].every(isFiniteNum)) {
+      const d = `M ${x0} ${y0} L ${x1} ${y0} L ${x1 - bevel} ${y1} L ${x0 + bevel} ${y1} Z`
+      plates.push(
+        <g key="plate-third">
+          <path d={d} fill="url(#gold-grad)" stroke="#111" strokeWidth={1} opacity={0.95} filter="url(#gold-glow)" />
+          <text x={cx} y={topY + plateH/2} textAnchor="middle" dominantBaseline="middle" className="fill-black" style={{ fontSize: 12, fontWeight: 800, letterSpacing: '0.5px' }}>3º LUGAR</text>
+        </g>
+      )
+    }
+  }
+  // Removida a placa central entre as semis (solicitado)
 
   return (
     <div className="bg-neutral-900 text-white p-4 rounded space-y-3">
@@ -270,6 +1038,55 @@ export default function Finais() {
           Modo edição (arrastar)
         </label>
         <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={isPathEditMode} onChange={e => setIsPathEditMode(e.target.checked)} disabled={!isEditMode} />
+          Editar caminhos (troncos)
+        </label>
+        {isEditMode && isPathEditMode && (
+          <div className="flex items-center gap-2 text-sm">
+            <span>Link selecionado:</span>
+            <select
+              className="bg-neutral-800 border border-neutral-700 rounded px-2 py-1 text-sm"
+              value={selectedLinkKey}
+              onChange={(e) => setSelectedLinkKey(e.target.value)}
+            >
+              <option value="">(nenhum)</option>
+              {semiL && finalJ && (<option value="L:final">Semifinal L → Final</option>)}
+              {semiR && finalJ && (<option value="R:final">Semifinal R → Final</option>)}
+              {semiL && third && (<option value="L:third">Semifinal L → 3º</option>)}
+              {semiR && third && (<option value="R:third">Semifinal R → 3º</option>)}
+            </select>
+            <button
+              className="px-2 py-1 rounded bg-neutral-700 hover:bg-neutral-600 text-sm"
+              onClick={() => {
+                if (!selectedLinkKey) return
+                const [side, dest] = selectedLinkKey.split(':')
+                const from = side === 'L' ? semiL : semiR
+                if (!from) return
+                const key = dest === 'final' ? 'toFinal' : 'toThird'
+                setLayoutMap(prev => {
+                  const prevNode = prev?.[from.id] || {}
+                  const prevLinks = prevNode.links || {}
+                  const link = prevLinks[key] || {}
+                  return {
+                    ...prev,
+                    [from.id]: {
+                      ...prevNode,
+                      links: {
+                        ...prevLinks,
+                        [key]: { ...link, points: [] },
+                      },
+                    },
+                  }
+                })
+              }}
+              disabled={!selectedLinkKey}
+            >
+              Limpar pontos
+            </button>
+            <span className="opacity-60">Clique no fundo para adicionar ponto</span>
+          </div>
+        )}
+        <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={showGrid} onChange={e => setShowGrid(e.target.checked)} />
           Mostrar grade (debug)
         </label>
@@ -277,108 +1094,195 @@ export default function Finais() {
           <input type="checkbox" checked={snapToGrid} onChange={e => setSnapToGrid(e.target.checked)} />
           Travar na grade
         </label>
-        <button className="px-2 py-1 rounded bg-neutral-700 hover:bg-neutral-600 text-sm" onClick={exportPreset}>Salvar preset (download)</button>
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={autoSave} onChange={e => setAutoSave(e.target.checked)} />
+          Salvar automaticamente
+        </label>
+        <div className="flex items-center gap-2 text-sm">
+          <span>Zoom:</span>
+          <button className="px-2 py-0.5 bg-neutral-700 rounded" onClick={() => setSCALE(s => Math.max(0.5, Math.round((s-0.25)*100)/100))}>-</button>
+          <span className="min-w-[40px] text-center">{SCALE.toFixed(2)}x</span>
+          <button className="px-2 py-0.5 bg-neutral-700 rounded" onClick={() => setSCALE(s => Math.min(4, Math.round((s+0.25)*100)/100))}>+</button>
+        </div>
+  <button className="px-2 py-1 rounded bg-neutral-700 hover:bg-neutral-600 text-sm" onClick={exportPreset}>Salvar preset (download)</button>
+  <button className="px-2 py-1 rounded bg-neutral-700 hover:bg-neutral-600 text-sm" onClick={async () => { try { await navigator.clipboard.writeText(JSON.stringify(layoutMap, null, 2)); } catch(e){ console.warn('Clipboard indisponível', e) } }}>Copiar preset</button>
         <label className="px-2 py-1 rounded bg-neutral-700 hover:bg-neutral-600 text-sm cursor-pointer">
           Importar preset
           <input type="file" accept="application/json" className="hidden" onChange={e => importPreset(e.target.files?.[0])} />
         </label>
+        <button className="px-2 py-1 rounded bg-amber-700 hover:bg-amber-600 text-sm" onClick={saveRemote} disabled={saving}>
+          {saving ? 'Salvando…' : 'Salvar no servidor'}
+        </button>
+        {lastSavedAt && <span className="opacity-70 text-xs">Salvo às {lastSavedAt.toLocaleTimeString()}</span>}
         <span className="opacity-70 text-xs">Escala: {SCALE}x</span>
       </div>
 
-      <svg ref={svgRef} className="block" width={SVG_W} height={SVG_H} viewBox={`0 0 ${CANVAS_W} ${CANVAS_H}`}>
+  <svg ref={svgRef} className="block" width={safeSW} height={safeSH} viewBox={`0 0 ${safeCW} ${safeCH}`}>
+        <defs>
+          <filter id="gold-glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feDropShadow dx="0" dy="0" stdDeviation="2" floodColor="#ff2b77" floodOpacity="0.6" />
+          </filter>
+          <linearGradient id="gold-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#ff6aa3"/>
+            <stop offset="100%" stopColor="#ff2b77"/>
+          </linearGradient>
+        </defs>
+        {/* fundo clicável para adicionar pontos em modo de edição de caminhos */}
+        <rect
+          x={0}
+          y={0}
+          width={safeCW}
+          height={safeCH}
+          fill="transparent"
+          onClick={(e) => {
+            if (!isEditMode || !isPathEditMode || !selectedLinkKey) return
+            const [side, dest] = selectedLinkKey.split(':')
+            const from = side === 'L' ? semiL : semiR
+            if (!from) return
+            const key = dest === 'final' ? 'toFinal' : 'toThird'
+            const { x, y } = getSvgCoords(e)
+            const px = snapToGrid ? Math.round(x / GRID_STEP) * GRID_STEP : Math.round(x)
+            const py = snapToGrid ? Math.round(y / GRID_STEP) * GRID_STEP : Math.round(y)
+            setLayoutMap(prev => {
+              const prevNode = prev?.[from.id] || {}
+              const prevLinks = prevNode.links || {}
+              const link = prevLinks[key] || {}
+              const ptsPrev = Array.isArray(link.points) ? [...link.points] : []
+              ptsPrev.push({ x: px, y: py })
+              return {
+                ...prev,
+                [from.id]: {
+                  ...prevNode,
+                  links: {
+                    ...prevLinks,
+                    [key]: { ...link, points: ptsPrev },
+                  },
+                },
+              }
+            })
+          }}
+          style={{ cursor: isEditMode && isPathEditMode && selectedLinkKey ? 'crosshair' : 'default' }}
+        />
         {/* grade de debug */}
         {showGrid && (
           <g>
             {/* linhas verticais */}
-            {Array.from({ length: Math.ceil(CANVAS_W / GRID_STEP) + 1 }).map((_, i) => {
+            {Array.from({ length: Math.max(0, Math.ceil(safeCW / GRID_STEP) + 1) }).map((_, i) => {
               const x = i * GRID_STEP
-              return <line key={`gv-${i}`} x1={x} y1={0} x2={x} y2={CANVAS_H} stroke="#666" strokeWidth={0.5} opacity={0.2} />
+              return <line key={`gv-${i}`} x1={x} y1={0} x2={x} y2={safeCH} stroke="#666" strokeWidth={0.5} opacity={0.2} />
             })}
             {/* linhas horizontais */}
-            {Array.from({ length: Math.ceil(CANVAS_H / GRID_STEP) + 1 }).map((_, i) => {
+            {Array.from({ length: Math.max(0, Math.ceil(safeCH / GRID_STEP) + 1) }).map((_, i) => {
               const y = i * GRID_STEP
-              return <line key={`gh-${i}`} x1={0} y1={y} x2={CANVAS_W} y2={y} stroke="#666" strokeWidth={0.5} opacity={0.2} />
+              return <line key={`gh-${i}`} x1={0} y1={y} x2={safeCW} y2={y} stroke="#666" strokeWidth={0.5} opacity={0.2} />
             })}
           </g>
         )}
-        {/* títulos */}
-        {posSemiL && <text x={posSemiL.x} y={posSemiL.y - 12} className="fill-pink-300 text-sm">Semifinal</text>}
-        {posSemiL && (isEditMode || showGrid) && (
+  {/* títulos */}
+        {/* removido rótulo textual 'Semifinal' para seguir o design */}
+        {isValidPos(posSemiL) && (isEditMode || showGrid) && (
           <text x={posSemiL.x} y={posSemiL.y - 28} className="fill-white/70 text-[10px]">ID {semiL?.id}</text>
         )}
-        {posSemiR && <text x={posSemiR.x} y={posSemiR.y - 12} className="fill-pink-300 text-sm">Semifinal</text>}
-        {posSemiR && (isEditMode || showGrid) && (
+        {/* removido rótulo textual 'Semifinal' para seguir o design */}
+        {isValidPos(posSemiR) && (isEditMode || showGrid) && (
           <text x={posSemiR.x} y={posSemiR.y - 28} className="fill-white/70 text-[10px]">ID {semiR?.id}</text>
         )}
-        {posFinal && <text x={posFinal.x} y={posFinal.y - 12} className="fill-pink-300 text-sm">Final</text>}
-        {posFinal && (isEditMode || showGrid) && (
+        {isValidPos(posFinal) && (() => {
+          const CREST_W = 220
+          const CREST_H = Math.round(CREST_W * 1.2)
+          const x = posFinal.x + (CARD_W / 2) - (CREST_W / 2)
+          const y = CREST_POS === 'center'
+            ? (posFinal.y + VS_CENTER_Y - (CREST_H / 2))
+            : (posFinal.y - (CREST_H + 12))
+          return (
+            <foreignObject x={x} y={y} width={CREST_W} height={CREST_H} overflow="visible">
+              <div xmlns="http://www.w3.org/1999/xhtml">
+                <FinalCrest width={CREST_W} title="FINAL" subtitle="LIGA AMIGOS DO FTV" variant="pink" />
+              </div>
+            </foreignObject>
+          )
+        })()}
+        {isValidPos(posFinal) && (isEditMode || showGrid) && (
           <text x={posFinal.x} y={posFinal.y - 28} className="fill-white/70 text-[10px]">ID {finalJ?.id}</text>
         )}
-        {posThird && <text x={posThird.x} y={posThird.y - 12} className="fill-pink-300 text-sm">3º Lugar</text>}
-        {posThird && (isEditMode || showGrid) && (
+  {/* removido rótulo textual '3º Lugar' para evitar duplicidade com a placa */}
+        {isValidPos(posThird) && (isEditMode || showGrid) && (
           <text x={posThird.x} y={posThird.y - 28} className="fill-white/70 text-[10px]">ID {third?.id}</text>
         )}
 
-        {/* conexões */}
-        {lines}
+  {/* conexões e placas decorativas */}
+  {plates}
+  <g filter="url(#gold-glow)">{lines}</g>
+  {isEditMode && isPathEditMode && pointHandles}
+        <text x={safeCW/2} y={safeCH - 12} textAnchor="middle" className="fill-white/70 tracking-widest" style={{fontSize: 12}}>
+          WORLD CHAMPIONSHIP
+        </text>
 
         {/* boxes */}
-        {semiL && posSemiL && (
-          <>
-            {(() => { const s0 = getSlotPos(semiL.id, posSemiL, 0); return s0 && (
-              <g transform={`translate(${s0.x}, ${s0.y})`} onMouseDown={onMouseDownSlot(semiL.id, 0, s0)} style={{ cursor: isEditMode ? 'grab' : 'pointer' }}>
-                <SingleSlotCard jogo={semiL} slot={0} jogos={jogos} duplas={srcDuplas} onClick={!isEditMode ? () => setModalJogo(semiL) : undefined} />
-              </g>
-            )})()}
-            {(() => { const s1 = getSlotPos(semiL.id, posSemiL, 1); return s1 && (
-              <g transform={`translate(${s1.x}, ${s1.y})`} onMouseDown={onMouseDownSlot(semiL.id, 1, s1)} style={{ cursor: isEditMode ? 'grab' : 'pointer' }}>
-                <SingleSlotCard jogo={semiL} slot={1} jogos={jogos} duplas={srcDuplas} onClick={!isEditMode ? () => setModalJogo(semiL) : undefined} />
-              </g>
-            )})()}
-          </>
-        )}
-        {semiR && posSemiR && (
-          <>
-            {(() => { const s0 = getSlotPos(semiR.id, posSemiR, 0); return s0 && (
-              <g transform={`translate(${s0.x}, ${s0.y})`} onMouseDown={onMouseDownSlot(semiR.id, 0, s0)} style={{ cursor: isEditMode ? 'grab' : 'pointer' }}>
-                <SingleSlotCard jogo={semiR} slot={0} jogos={jogos} duplas={srcDuplas} onClick={!isEditMode ? () => setModalJogo(semiR) : undefined} />
-              </g>
-            )})()}
-            {(() => { const s1 = getSlotPos(semiR.id, posSemiR, 1); return s1 && (
-              <g transform={`translate(${s1.x}, ${s1.y})`} onMouseDown={onMouseDownSlot(semiR.id, 1, s1)} style={{ cursor: isEditMode ? 'grab' : 'pointer' }}>
-                <SingleSlotCard jogo={semiR} slot={1} jogos={jogos} duplas={srcDuplas} onClick={!isEditMode ? () => setModalJogo(semiR) : undefined} />
-              </g>
-            )})()}
-          </>
-        )}
-        {finalJ && posFinal && (
-          <>
-            {(() => { const s0 = getSlotPos(finalJ.id, posFinal, 0); return s0 && (
-              <g transform={`translate(${s0.x}, ${s0.y})`} onMouseDown={onMouseDownSlot(finalJ.id, 0, s0)} style={{ cursor: isEditMode ? 'grab' : 'pointer' }}>
-                <SingleSlotCard jogo={finalJ} slot={0} jogos={jogos} duplas={srcDuplas} onClick={!isEditMode ? () => setModalJogo(finalJ) : undefined} />
-              </g>
-            )})()}
-            {(() => { const s1 = getSlotPos(finalJ.id, posFinal, 1); return s1 && (
-              <g transform={`translate(${s1.x}, ${s1.y})`} onMouseDown={onMouseDownSlot(finalJ.id, 1, s1)} style={{ cursor: isEditMode ? 'grab' : 'pointer' }}>
-                <SingleSlotCard jogo={finalJ} slot={1} jogos={jogos} duplas={srcDuplas} onClick={!isEditMode ? () => setModalJogo(finalJ) : undefined} />
-              </g>
-            )})()}
-          </>
-        )}
-        {third && posThird && (
-          <>
-            {(() => { const s0 = getSlotPos(third.id, posThird, 0); return s0 && (
-              <g transform={`translate(${s0.x}, ${s0.y})`} onMouseDown={onMouseDownSlot(third.id, 0, s0)} style={{ cursor: isEditMode ? 'grab' : 'pointer' }}>
-                <SingleSlotCard jogo={third} slot={0} jogos={jogos} duplas={srcDuplas} onClick={!isEditMode ? () => setModalJogo(third) : undefined} />
-              </g>
-            )})()}
-            {(() => { const s1 = getSlotPos(third.id, posThird, 1); return s1 && (
-              <g transform={`translate(${s1.x}, ${s1.y})`} onMouseDown={onMouseDownSlot(third.id, 1, s1)} style={{ cursor: isEditMode ? 'grab' : 'pointer' }}>
-                <SingleSlotCard jogo={third} slot={1} jogos={jogos} duplas={srcDuplas} onClick={!isEditMode ? () => setModalJogo(third) : undefined} />
-              </g>
-            )})()}
-          </>
-        )}
+        {semiL && posSemiL && (() => { const s0 = getSlotPos(semiL.id, posSemiL, 0); return s0 && (
+          <g transform={`translate(${s0.x}, ${s0.y})`} onMouseDown={onMouseDownSlot(semiL.id, 0, s0)} style={{ cursor: isEditMode ? 'grab' : 'pointer' }}>
+            <FinalsMatchCard
+              jogo={semiL}
+              jogos={jogos}
+              duplas={srcDuplas}
+              x={0}
+              y={0}
+              onClick={!isEditMode ? () => setModalJogo(semiL) : undefined}
+              onOpenFonte={(refId) => {
+                const src = jogos.find(j => j.id === refId)
+                if (src) setModalJogo(src)
+              }}
+            />
+          </g>
+        )})()}
+        {semiR && posSemiR && (() => { const s0 = getSlotPos(semiR.id, posSemiR, 0); return s0 && (
+          <g transform={`translate(${s0.x}, ${s0.y})`} onMouseDown={onMouseDownSlot(semiR.id, 0, s0)} style={{ cursor: isEditMode ? 'grab' : 'pointer' }}>
+            <FinalsMatchCard
+              jogo={semiR}
+              jogos={jogos}
+              duplas={srcDuplas}
+              x={0}
+              y={0}
+              onClick={!isEditMode ? () => setModalJogo(semiR) : undefined}
+              onOpenFonte={(refId) => {
+                const src = jogos.find(j => j.id === refId)
+                if (src) setModalJogo(src)
+              }}
+            />
+          </g>
+        )})()}
+        {finalJ && posFinal && (() => { const s0 = getSlotPos(finalJ.id, posFinal, 0); return s0 && (
+          <g transform={`translate(${s0.x}, ${s0.y})`} onMouseDown={onMouseDownSlot(finalJ.id, 0, s0)} style={{ cursor: isEditMode ? 'grab' : 'pointer' }}>
+            <FinalsMatchCard
+              jogo={finalJ}
+              jogos={jogos}
+              duplas={srcDuplas}
+              x={0}
+              y={0}
+              onClick={!isEditMode ? () => setModalJogo(finalJ) : undefined}
+              onOpenFonte={(refId) => {
+                const src = jogos.find(j => j.id === refId)
+                if (src) setModalJogo(src)
+              }}
+            />
+          </g>
+        )})()}
+        {third && posThird && (() => { const s0 = getSlotPos(third.id, posThird, 0); return s0 && (
+          <g transform={`translate(${s0.x}, ${s0.y})`} onMouseDown={onMouseDownSlot(third.id, 0, s0)} style={{ cursor: isEditMode ? 'grab' : 'pointer' }}>
+            <FinalsMatchCard
+              jogo={third}
+              jogos={jogos}
+              duplas={srcDuplas}
+              x={0}
+              y={0}
+              onClick={!isEditMode ? () => setModalJogo(third) : undefined}
+              onOpenFonte={(refId) => {
+                const src = jogos.find(j => j.id === refId)
+                if (src) setModalJogo(src)
+              }}
+            />
+          </g>
+        )})()}
       </svg>
 
       {modalJogo && (

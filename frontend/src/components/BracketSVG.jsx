@@ -215,6 +215,11 @@ export default function BracketSVG() {
 
     const sourceDuplas = (participants && participants.length > 0) ? participants : duplas
     // build connection lines (elbows) from child matches to parent match
+    const ELBOW_OFFSET = 12
+    const makeElbowPath = (fromX, fromY, toX, toY) => {
+      const midX = fromX + ELBOW_OFFSET
+      return `M ${fromX} ${fromY} L ${midX} ${fromY} L ${midX} ${toY} L ${toX} ${toY}`
+    }
     const lines = []
     positionsByRound.forEach((col, colIndex) => {
       if (colIndex === 0) return
@@ -229,17 +234,32 @@ export default function BracketSVG() {
         if (srcA) {
           const fromX = srcA.x + fromOffset
           const fromY = srcA.y + 26
-          const d = `M ${fromX} ${fromY} L ${fromX + 8} ${fromY} L ${fromX + 8} ${toY} L ${toX} ${toY}`
-          lines.push(<path key={`l-${pos.id}-a`} d={d} stroke="#333" strokeWidth={1} fill="none" />)
+          const d = makeElbowPath(fromX, fromY, toX, toY)
+          lines.push(<path key={`l-${pos.id}-a`} d={d} stroke="#6b7280" strokeWidth={1.2} fill="none" />)
         }
         if (srcB) {
           const fromX = srcB.x + fromOffset
           const fromY = srcB.y + 26
-          const d = `M ${fromX} ${fromY} L ${fromX + 8} ${fromY} L ${fromX + 8} ${toY} L ${toX} ${toY}`
-          lines.push(<path key={`l-${pos.id}-b`} d={d} stroke="#333" strokeWidth={1} fill="none" />)
+          const d = makeElbowPath(fromX, fromY, toX, toY)
+          lines.push(<path key={`l-${pos.id}-b`} d={d} stroke="#6b7280" strokeWidth={1.2} fill="none" />)
         }
       })
     })
+
+    // Decorative match brackets on the very first main column (visual like the reference)
+    const decos = []
+    const firstMainColIndex = hasPrelim ? 1 : 0
+    const firstCol = positionsByRound[firstMainColIndex] || []
+    for (let i = 0; i + 1 < firstCol.length; i += 2) {
+      const top = firstCol[i]
+      const bottom = firstCol[i + 1]
+      if (!top || !bottom) continue
+      const xLeft = top.x - 16
+      const yTop = top.y + 26
+      const yBottom = bottom.y + 26
+      const d = `M ${xLeft} ${yTop} L ${xLeft - 6} ${yTop} L ${xLeft - 6} ${yBottom} L ${xLeft} ${yBottom}`
+      decos.push(<path key={`decor-${top.id}-${bottom.id}`} d={d} stroke="#ef4444" strokeWidth={2} fill="none" />)
+    }
 
     const matchNodes = positionsByRound.flatMap(col => col.map(pos => {
       // skip rendering match boxes for skipRender matches in the first column so byes don't show
@@ -253,7 +273,7 @@ export default function BracketSVG() {
     })).filter(Boolean)
       return (
         <g>
-          <g className="bracket-lines">{lines}</g>
+          <g className="bracket-lines">{lines}{decos}</g>
           {matchNodes}
         </g>
       )
@@ -262,7 +282,9 @@ export default function BracketSVG() {
   const upperRounds = Array.from(grouped.upper.keys()).sort((a,b) => a - b);
   const hasPrelimGlobal = (jogos || []).some(j => j.tipo === 'prelim')
   // if we have prelims, label the leftmost column as Fase 1 (prelim) and shift main rounds by +1
-  const labelsUpper = hasPrelimGlobal ? Array.from({ length: 1 + upperRounds.length }, (_, i) => `Fase ${i + 1}`) : upperRounds.map(r => `Fase ${r}`);
+  const labelsUpperRaw = hasPrelimGlobal ? Array.from({ length: 1 + upperRounds.length }, (_, i) => `Fase ${i + 1}`) : upperRounds.map(r => `Fase ${r}`);
+  // Solicitação: ocultar a label "Fase 5" (mantendo espaçamento das colunas)
+  const labelsUpper = labelsUpperRaw.map((s, i) => (i === 4 ? '' : s))
   const maxUpperRows = upperRounds.reduce((mx, r) => Math.max(mx, (grouped.upper.get(r) || []).length), 0);
   const prelimCount = (jogos || []).filter(j => j.tipo === 'prelim').length;
   const maxUpperRowsEff = hasPrelimGlobal ? Math.max(maxUpperRows, prelimCount) : maxUpperRows;
@@ -303,13 +325,17 @@ export default function BracketSVG() {
 
   <svg className="bracket-svg block mx-auto" width={svgWidth} height={svgHeight} viewBox={`0 0 ${svgWidth} ${svgHeight}`}>
     {/* Upper labels and bracket */}
-    <RoundLabels rounds={labelsUpper} y={0} />
+  <RoundLabels rounds={labelsUpper} y={0} />
     {renderUpper()}
 
     {/* Lower labels and bracket (abaixo) */}
     {hasLowerMatches && (
       <g transform={`translate(0, ${lowerGroupY})`}>
-        <RoundLabels rounds={Array.from(grouped.lower.keys()).sort((a,b) => a - b).map(r => `Perdedores Fase ${r}`)} y={0} isLosers={true} />
+        {(() => {
+          const lowerLabelsRaw = Array.from(grouped.lower.keys()).sort((a,b) => a - b).map(r => `Perdedores Fase ${r}`)
+          const lowerLabels = lowerLabelsRaw.map((s, i) => (i === 4 ? '' : s))
+          return <RoundLabels rounds={lowerLabels} y={0} isLosers={true} />
+        })()}
         {(() => {
         // render lower bracket similarly to upper, but offset vertically
         const rounds = Array.from(grouped.lower.keys()).sort((a,b) => a - b);
@@ -344,6 +370,11 @@ export default function BracketSVG() {
         })
 
         // lines and nodes for lower
+        const ELBOW_OFFSET = 12
+        const makeElbowPath = (fromX, fromY, toX, toY) => {
+          const midX = fromX + ELBOW_OFFSET
+          return `M ${fromX} ${fromY} L ${midX} ${fromY} L ${midX} ${toY} L ${toX} ${toY}`
+        }
         const lines = []
         positionsByRound.forEach((col, colIndex) => {
           if (colIndex === 0) return
@@ -357,14 +388,14 @@ export default function BracketSVG() {
             if (srcA) {
               const fromX = srcA.x + fromOffset
               const fromY = srcA.y + 26
-              const d = `M ${fromX} ${fromY} L ${fromX + 8} ${fromY} L ${fromX + 8} ${toY} L ${toX} ${toY}`
-              lines.push(<path key={`ll-${pos.id}-a`} d={d} stroke="#333" strokeWidth={1} fill="none" />)
+              const d = makeElbowPath(fromX, fromY, toX, toY)
+              lines.push(<path key={`ll-${pos.id}-a`} d={d} stroke="#6b7280" strokeWidth={1.2} fill="none" />)
             }
             if (srcB) {
               const fromX = srcB.x + fromOffset
               const fromY = srcB.y + 26
-              const d = `M ${fromX} ${fromY} L ${fromX + 8} ${fromY} L ${fromX + 8} ${toY} L ${toX} ${toY}`
-              lines.push(<path key={`ll-${pos.id}-b`} d={d} stroke="#333" strokeWidth={1} fill="none" />)
+              const d = makeElbowPath(fromX, fromY, toX, toY)
+              lines.push(<path key={`ll-${pos.id}-b`} d={d} stroke="#6b7280" strokeWidth={1.2} fill="none" />)
             }
           })
         })

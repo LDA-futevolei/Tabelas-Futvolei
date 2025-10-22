@@ -1,7 +1,7 @@
 import React, { useState } from 'react'
 import { useBracketStore } from '../store/useBracketStore'
 
-export default function Participants() {
+export default function Participants({ onAfterGenerate } = {}) {
   const participants = useBracketStore(s => s.participants || [])
   const addDupla = useBracketStore(s => s.addDupla)
   const removeDupla = useBracketStore(s => s.removeDupla)
@@ -54,9 +54,13 @@ export default function Participants() {
         </ul>
       </div>
 
-      <div className="flex justify-end">
+      <div className="flex justify-between items-center gap-3">
+        <div className="text-xs text-gray-400">Total: {participants.length}</div>
         <div className="flex items-center gap-2">
-          <button onClick={() => gerarClassificatoria({ prelim: true })} className="px-3 py-2 bg-green-600 rounded">Gerar Classificatória (Prelim)</button>
+          <button
+            onClick={() => { gerarClassificatoria({ prelim: true }); if (typeof onAfterGenerate === 'function') onAfterGenerate(); }}
+            className="px-3 py-2 bg-green-600 rounded"
+          >Gerar Classificatória (Prelim)</button>
         </div>
         <div className="text-xs text-gray-400 ml-2">Última geração: {JSON.stringify(lastGenOptions || {})}</div>
       </div>
