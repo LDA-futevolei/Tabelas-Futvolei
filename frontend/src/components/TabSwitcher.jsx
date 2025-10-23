@@ -3,7 +3,7 @@ import { useBracketStore } from '../store/useBracketStore'
 
 export default function TabSwitcher() {
   const faseAtual = useBracketStore(s => s.faseAtual)
-  const setFase = useBracketStore(s => s.setFase)
+  const setFaseAtual = useBracketStore(s => s.setFaseAtual)
   const participants = useBracketStore(s => s.participants || s.duplas || [])
   const jogos = useBracketStore(s => s.jogos)
   const avancarParaFinais = useBracketStore(s => s.avancarParaFinais)
@@ -19,7 +19,7 @@ export default function TabSwitcher() {
         className={`px-4 py-2 rounded-2xl shadow ${
           faseAtual === 'classificacao' ? 'bg-neutral-900 text-white' : 'bg-white'
         }`}
-        onClick={() => setFase('classificacao')}
+  onClick={() => setFaseAtual('classificacao')}
       >
         Classificatória
       </button>
@@ -28,7 +28,7 @@ export default function TabSwitcher() {
         className={`px-4 py-2 rounded-2xl shadow ${
           faseAtual === 'finais' ? 'bg-neutral-900 text-white' : 'bg-white'
         }`}
-        onClick={() => setFase('finais')}
+  onClick={() => setFaseAtual('finais')}
       >
         Fase Finais
       </button>

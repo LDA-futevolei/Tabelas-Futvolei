@@ -1,16 +1,20 @@
 import React, { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import Participants from '../components/Participants'
 import { useBracketStore } from '../store/useBracketStore'
 import { putClassificacaoLayout, putFinaisLayout, getAtualCampeonato } from '../logic/api'
+import BracketSVG from '../components/BracketSVG'
+import Finais from '../components/Finais'
+import ConfigPanel from '../components/ConfigPanel'
 
 export default function Setup() {
-  const navigate = useNavigate()
+  
   const faseAtual = useBracketStore(s => s.faseAtual)
   const setFaseAtual = useBracketStore(s => s.setFaseAtual)
   const avancarParaFinais = useBracketStore(s => s.avancarParaFinais)
   const jogos = useBracketStore(s => s.jogos)
   const participants = useBracketStore(s => s.participants)
+  const [tab, setTab] = useState('participantes') // participantes | chaves | configuracoes
   
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState('')
@@ -60,8 +64,40 @@ export default function Setup() {
           </nav>
         </header>
 
-        {/* Painel de participantes + gerar classificatória */}
-  <Participants onAfterGenerate={() => { navigate('/tabela?fase=classificacao') }} />
+        {/* Tabs internas */}
+        <div className="flex items-center gap-2">
+          <button onClick={() => setTab('participantes')} className={`px-3 py-1 rounded ${tab==='participantes'?'bg-pink-600':'bg-neutral-800'}`}>Participantes</button>
+          <button onClick={() => setTab('chaves')} className={`px-3 py-1 rounded ${tab==='chaves'?'bg-pink-600':'bg-neutral-800'}`}>Chaves</button>
+          <button onClick={() => setTab('configuracoes')} className={`px-3 py-1 rounded ${tab==='configuracoes'?'bg-pink-600':'bg-neutral-800'}`}>Configurações</button>
+        </div>
+
+        {/* Conteúdo por aba */}
+        {tab === 'participantes' && (
+          <Participants onAfterGenerate={() => { setFaseAtual('classificacao'); setTab('chaves') }} />
+        )}
+        {tab === 'chaves' && (
+          <div className="space-y-4">
+            <div className="flex gap-2">
+              <button className={`px-3 py-1 rounded ${faseAtual !== 'finais' ? 'bg-pink-600' : 'bg-neutral-700'}`} onClick={() => setFaseAtual('classificacao')}>Classificação</button>
+              <button className={`px-3 py-1 rounded ${faseAtual === 'finais' ? 'bg-pink-600' : 'bg-neutral-700'}`} onClick={() => avancarParaFinais()}>Fase Finais</button>
+            </div>
+            {faseAtual === 'finais' ? (
+              <div className="w-fit">
+                <Finais />
+              </div>
+            ) : (
+              <div className="max-w-full overflow-auto">
+                <BracketSVG />
+              </div>
+            )}
+          </div>
+        )}
+        {tab === 'configuracoes' && (
+          <section className="bg-neutral-900 text-white p-4 rounded space-y-3 border border-neutral-700">
+            <h3 className="text-lg font-bold text-pink-400">Configurações</h3>
+            <ConfigPanel />
+          </section>
+        )}
 
         {/* Botão de salvar */}
         <section className="bg-neutral-900 text-white p-4 rounded space-y-3 border border-pink-600">
