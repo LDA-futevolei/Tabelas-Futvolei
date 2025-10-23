@@ -24,6 +24,8 @@ model Campeonato {
   inicioInscricoes DateTime
   fimInscricoes    DateTime
   duplas           Dupla[]
+
+  Layout Layout[]
 }
 
 model Participante {
