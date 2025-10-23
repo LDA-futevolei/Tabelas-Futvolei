@@ -41,4 +41,7 @@ routes.use('/participante', ParticipanteRouter);
 routes.use('/dupla', DuplaRouter);
 routes.use('/campeonato', CampeonatoRouter);
 routes.use('/jogo', JogoRouter);
+// routes.use('/dupla');
+routes.use('/campeonato', CampeonatoRouter);
+// routes.use('/jogo');
 routes.use('/layout', LayoutRouter);
