@@ -35,7 +35,7 @@ routes.use('/docs', IsAdmin, swaggerUi.serve, swaggerUi.setup(swaggerOptions));
 
 routes.use('/user', UserRouter);
 routes.use('/participante', ParticipanteRouter);
-routes.use('/dupla');
+// routes.use('/dupla');
 routes.use('/campeonato', CampeonatoRouter);
-routes.use('/jogo');
+// routes.use('/jogo');
 routes.use('/layout', LayoutRouter);

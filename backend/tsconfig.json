@@ -2,6 +2,7 @@
     "extends": "@tsconfig/node16/tsconfig.json",
     "compileOnSave": true,
     "compilerOptions": {
+        "outDir": "dist/",
         "strict": true,
         "esModuleInterop": true,
         "resolveJsonModule": true,
