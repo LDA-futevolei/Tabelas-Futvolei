@@ -9,10 +9,13 @@ import IsAdmin from '@/middlewares/IsAdmin';
 import { ParticipanteRouter } from './participante';
 import { LayoutRouter } from './layout';
 import { CampeonatoRouter } from './campeonato';
+import { DuplaRouter } from './dupla';
+import { JogoRouter } from './jogo';
 
 export const routes = express.Router();
 
-const SECRET = process.env.SECRET as string;
+// Defina um segredo válido para a sessão. Evita o warning "req.secret; provide secret option"
+const SECRET = (process.env.SESSION_SECRET?.trim() || process.env.SECRET?.trim() || 'dev-session-secret');
 
 // SESSÃO
 routes.use(
@@ -35,7 +38,7 @@ routes.use('/docs', IsAdmin, swaggerUi.serve, swaggerUi.setup(swaggerOptions));
 
 routes.use('/user', UserRouter);
 routes.use('/participante', ParticipanteRouter);
-routes.use('/dupla');
+routes.use('/dupla', DuplaRouter);
 routes.use('/campeonato', CampeonatoRouter);
-routes.use('/jogo');
+routes.use('/jogo', JogoRouter);
 routes.use('/layout', LayoutRouter);

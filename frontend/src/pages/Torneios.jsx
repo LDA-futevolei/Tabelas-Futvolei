@@ -26,7 +26,7 @@ function TorneioCard({ t, onOpen }) {
 }
 
 export default function Torneios() {
-  const [profile, setProfile] = useState(null)
+  const [_profile, setProfile] = useState(null)
   const [list, setList] = useState([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')

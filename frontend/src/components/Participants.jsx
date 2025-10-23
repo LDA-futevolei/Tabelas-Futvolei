@@ -7,7 +7,6 @@ export default function Participants({ onAfterGenerate } = {}) {
   const removeDupla = useBracketStore(s => s.removeDupla)
   const bulkAddDuplas = useBracketStore(s => s.bulkAddDuplas)
   const gerarClassificatoria = useBracketStore(s => s.gerarClassificatoria)
-  const lastGenOptions = useBracketStore(s => s.lastGenOptions)
 
   const [name, setName] = useState('')
   const [bulk, setBulk] = useState('')
@@ -56,13 +55,10 @@ export default function Participants({ onAfterGenerate } = {}) {
 
       <div className="flex justify-between items-center gap-3">
         <div className="text-xs text-gray-400">Total: {participants.length}</div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => { gerarClassificatoria({ prelim: true }); if (typeof onAfterGenerate === 'function') onAfterGenerate(); }}
-            className="px-3 py-2 bg-green-600 rounded"
-          >Gerar Classificatória (Prelim)</button>
-        </div>
-        <div className="text-xs text-gray-400 ml-2">Última geração: {JSON.stringify(lastGenOptions || {})}</div>
+        <button
+          onClick={() => { gerarClassificatoria({ prelim: true }); if (typeof onAfterGenerate === 'function') onAfterGenerate(); }}
+          className="px-3 py-2 bg-green-600 rounded"
+        >Gerar Classificatória (Prelim)</button>
       </div>
     </div>
   )

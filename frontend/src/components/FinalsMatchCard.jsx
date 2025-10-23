@@ -5,18 +5,46 @@ import { resolveSlotLabel } from './utils/resolveSlotLabel'
 // Mantém compatibilidade de props com MatchCard onde possível
 export default function FinalsMatchCard({ jogo, duplas = [], jogos = [], x = 0, y = 0, onClick, onOpenFonte }) {
   const fonteList = Array.isArray(jogo?.fontes) ? jogo.fontes : []
-  const labelA = resolveSlotLabel(jogo?.a ?? null, fonteList, duplas, 0, jogos)
-  const labelB = resolveSlotLabel(jogo?.b ?? null, fonteList, duplas, 1, jogos)
+  const f0 = fonteList[0]
+  const f1 = fonteList[1]
+  
+  // Verificar se a fonte está pendente (mesmo lógica do MatchCard)
+  const getSrc = (f) => {
+    if (!f || f.type !== 'from' || f.ref == null) return null
+    return (Array.isArray(jogos) ? jogos.find(j => j.id === f.ref) : null) || null
+  }
+  const srcA = getSrc(f0)
+  const srcB = getSrc(f1)
+  
+  // Debug: verificar se está encontrando os jogos fonte
+  if (f0 && f0.type === 'from') {
+    console.debug(`[FinalsMatchCard ${jogo.id}] fonte A:`, f0.ref, 'encontrado:', srcA?.id, 'vencedor:', srcA?.vencedor)
+  }
+  if (f1 && f1.type === 'from') {
+    console.debug(`[FinalsMatchCard ${jogo.id}] fonte B:`, f1.ref, 'encontrado:', srcB?.id, 'vencedor:', srcB?.vencedor)
+  }
+  
+  const preferFonteA = f0 && f0.type === 'from' && (!srcA || srcA.vencedor == null)
+  const preferFonteB = f1 && f1.type === 'from' && (!srcB || srcB.vencedor == null)
+  
+  // Passar null quando fonte pendente para forçar placeholder
+  const labelA = preferFonteA
+    ? resolveSlotLabel(null, fonteList, duplas, 0, jogos)
+    : resolveSlotLabel(jogo?.a ?? null, fonteList, duplas, 0, jogos)
+  const labelB = preferFonteB
+    ? resolveSlotLabel(null, fonteList, duplas, 1, jogos)
+    : resolveSlotLabel(jogo?.b ?? null, fonteList, duplas, 1, jogos)
 
   const scoreA = (typeof jogo?.placarA !== 'undefined' && jogo?.placarA != null) ? String(jogo.placarA) : ''
   const scoreB = (typeof jogo?.placarB !== 'undefined' && jogo?.placarB != null) ? String(jogo.placarB) : ''
   const vencedor = (typeof jogo?.vencedor !== 'undefined' && jogo?.vencedor != null) ? jogo.vencedor : null
-  const aSeedVal = (typeof jogo?.a === 'number') ? jogo.a : null
-  const bSeedVal = (typeof jogo?.b === 'number') ? jogo.b : null
+  // Ignorar jogo.a/b quando fonte pendente
+  const aSeedVal = preferFonteA ? null : ((typeof jogo?.a === 'number') ? jogo.a : null)
+  const bSeedVal = preferFonteB ? null : ((typeof jogo?.b === 'number') ? jogo.b : null)
   const isWinnerA = vencedor != null && aSeedVal != null && vencedor === aSeedVal
   const isWinnerB = vencedor != null && bSeedVal != null && vencedor === bSeedVal
 
-  const GOLD = '#d4af37'
+  const GOLD = '#ff2b77' // cor rosa para tema
   const WIDTH = 240
   const HEIGHT = 26
   const GAP = 6

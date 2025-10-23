@@ -166,53 +166,70 @@ export const useBracketStore = create((set, get) => ({
           return null
         }
         const fontes = Array.isArray(updated.fontes) ? updated.fontes : []
-        // map fonte index to slot
+        // map fonte index to slot STRICTLY: fonte[0]→A, fonte[1]→B
         let effA = updated.a
         let effB = updated.b
         if ((effA == null || effB == null) && fontes.length > 0) {
           const f0 = fontes[0]
           const f1 = fontes[1]
-          if (effA == null) effA = resolveFromFonte(f0)
-          if (effB == null) effB = resolveFromFonte(f1)
-          // fallback: if only one fonte exists, try fill remaining from any fonte
-          if (effA == null) {
-            for (const f of fontes) { const v = resolveFromFonte(f); if (v != null) { effA = v; break } }
-          }
-          if (effB == null) {
-            for (const f of fontes) { const v = resolveFromFonte(f); if (v != null && v !== effA) { effB = v; break } }
-          }
+          if (effA == null && f0) effA = resolveFromFonte(f0)
+          if (effB == null && f1) effB = resolveFromFonte(f1)
+          // NO fallback: never fill both slots with the same value
         }
         // determine loser where possible
         const loser = (effA != null && effB != null) ? ((effA === win) ? effB : effA) : null
 
-        // propagate to downstream matches that reference this match
+        // propagate to downstream matches that reference this match DIRECTLY
+        console.debug(`[propagate] Buscando jogos que referenciam Jogo ${idJogo}...`)
         for (const tgt of jogos) {
           if (!Array.isArray(tgt.fontes)) continue
           for (let fi = 0; fi < tgt.fontes.length; fi++) {
             const f = tgt.fontes[fi]
             if (!f || f.type !== 'from' || f.ref !== idJogo) continue
-            // we have a reference; decide value based on path
+            // we have a DIRECT reference; decide value based on path
+            console.debug(`[propagate] ✓ Encontrado: Jogo ${tgt.id} (fase: ${tgt.fase}, tipo: ${tgt.tipo}) fonte[${fi}] → path: ${f.path}`)
             const path = f.path
             if (path === 'vencedor') {
-              // place winner into corresponding slot (try map by fonte index -> a/b)
+              // place winner ONLY into the corresponding slot based on fonte index
+              // NEVER fill both slots with the same value
               if (fi === 0) {
-                if (tgt.a == null) tgt.a = win
+                // First fonte always goes to slot A
+                console.debug(`[propagate] Jogo ${idJogo} → Jogo ${tgt.id} slot A = ${win}`)
+                tgt.a = win
               } else if (fi === 1) {
-                if (tgt.b == null) tgt.b = win
-              } else {
-                // fallback: fill first available
-                if (tgt.a == null) tgt.a = win
-                else if (tgt.b == null) tgt.b = win
+                // Second fonte always goes to slot B
+                console.debug(`[propagate] Jogo ${idJogo} → Jogo ${tgt.id} slot B = ${win}`)
+                tgt.b = win
               }
             } else if (path === 'perdedor') {
               if (loser == null) continue
               if (fi === 0) {
-                if (tgt.a == null) tgt.a = loser
+                // First fonte always goes to slot A
+                console.debug(`[propagate] Jogo ${idJogo} (perdedor) → Jogo ${tgt.id} slot A = ${loser}`)
+                tgt.a = loser
               } else if (fi === 1) {
-                if (tgt.b == null) tgt.b = loser
-              } else {
-                if (tgt.a == null) tgt.a = loser
-                else if (tgt.b == null) tgt.b = loser
+                // Second fonte always goes to slot B
+                console.debug(`[propagate] Jogo ${idJogo} (perdedor) → Jogo ${tgt.id} slot B = ${loser}`)
+                tgt.b = loser
+              }
+            }
+          }
+        }
+
+        // Propagar automaticamente para marcadores (upper-final/lower-final)
+        // Esses marcadores têm UMA fonte e devem copiar o vencedor do jogo-fonte
+        for (const marker of jogos) {
+          if ((marker.tipo === 'upper-final' || marker.tipo === 'lower-final') && Array.isArray(marker.fontes) && marker.fontes.length === 1) {
+            const f = marker.fontes[0]
+            if (f && f.type === 'from' && f.path === 'vencedor' && f.ref != null) {
+              const src = jogos.find(j => j.id === f.ref)
+              if (src && src.vencedor != null) {
+                // Copiar vencedor do jogo-fonte para o marcador
+                if (marker.vencedor !== src.vencedor) {
+                  console.debug(`[propagate] Marcador ${marker.id} (${marker.tipo}) copiando vencedor do Jogo ${src.id}: ${src.vencedor}`)
+                  marker.vencedor = src.vencedor
+                  marker.a = src.vencedor // para compatibilidade
+                }
               }
             }
           }

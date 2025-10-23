@@ -27,7 +27,7 @@ LayoutRouter.put('/finais', async (req, res) => {
   const prisma = new PrismaClient()
   const { campeonatoId, data } = req.body ?? {}
   const cid = campeonatoId == null ? null : Number(campeonatoId)
-  if (campeonatoId != null && (Number.isNaN(cid) || cid < 0)) {
+  if (campeonatoId != null && (Number.isNaN(cid!) || cid! < 0)) {
     return res.status(400).json({ data: null, erros: ['Parametro campeonatoId inválido'] })
   }
   if (typeof data === 'undefined') {
@@ -71,7 +71,7 @@ LayoutRouter.put('/meta', async (req, res) => {
   const prisma = new PrismaClient()
   const { campeonatoId, data } = req.body ?? {}
   const cid = campeonatoId == null ? null : Number(campeonatoId)
-  if (campeonatoId != null && (Number.isNaN(cid) || cid < 0)) {
+  if (campeonatoId != null && (Number.isNaN(cid!) || cid! < 0)) {
     return res.status(400).json({ data: null, erros: ['Parametro campeonatoId inválido'] })
   }
   if (typeof data === 'undefined') {

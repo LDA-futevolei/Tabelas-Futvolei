@@ -1,11 +1,11 @@
-import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
+import React, { useMemo, useRef, useState } from 'react'
 import { useBracketStore } from '../store/useBracketStore'
 import ModalPlacar from './ModalPlacar'
 import SingleSlotCard from './SingleSlotCard'
 import FinalsMatchCard from './FinalsMatchCard'
 import FinalCrest from './FinalCrest'
 import layoutFinais from '../logic/layout/layoutFinais.json'
-import { getAtualCampeonato, getFinaisLayout, putFinaisLayout } from '../logic/api'
+// import { getAtualCampeonato, getFinaisLayout, putFinaisLayout } from '../logic/api'
 
 export default function Finais() {
   const jogos = useBracketStore(s => s.jogos || [])
@@ -26,239 +26,38 @@ export default function Finais() {
 
   const srcDuplas = (participants && participants.length > 0) ? participants : duplas
 
-  // Layout base (como antes), mas com escala global de renderização
-  const [SCALE, setSCALE] = useState(2) // controle de zoom
-  let CANVAS_W = 1000
-  let CANVAS_H = 520
+  // Layout base simplificado para visualização
+  const SCALE = 2
+  let CANVAS_W = 900
+  let CANVAS_H = 480
   let SVG_W = CANVAS_W * SCALE
   let SVG_H = CANVAS_H * SCALE
 
   // Estado de layout editável (inicia com JSON importado)
-  const [layoutMap, setLayoutMap] = useState(() => ({ ...(layoutFinais || {}) }))
-  const [campeonatoId, setCampeonatoId] = useState(null)
-  const [saving, setSaving] = useState(false)
-  const [lastSavedAt, setLastSavedAt] = useState(null)
-  const [autoSave, setAutoSave] = useState(false)
-  const [isEditMode, setIsEditMode] = useState(false)
-  const [isPathEditMode, setIsPathEditMode] = useState(false)
-  const [dragging, setDragging] = useState(null) // slot: { kind:'slot', id, slot, offsetX, offsetY } | trunk: { kind:'trunk', fromId, key, offsetX, offsetY } | point: { kind:'point', fromId, key, index, offsetX, offsetY }
-  const [showGrid, setShowGrid] = useState(false)
-  const [snapToGrid, setSnapToGrid] = useState(true)
-  // Link selecionado para adicionar pontos clicando no fundo do SVG (sem paths padrão nas semis)
-  // Formato: "L:final" | "R:final" | "L:third" | "R:third"
-  const [selectedLinkKey, setSelectedLinkKey] = useState('')
-  const GRID_STEP = 40
+  const [layoutMap] = useState(() => ({ ...(layoutFinais || {}) }))
   const svgRef = useRef(null)
 
-  // helpers para coordenadas SVG a partir do mouse
-  const getSvgCoords = useCallback((e) => {
-    const svg = svgRef.current
-    if (!svg) return { x: 0, y: 0 }
-    const rect = svg.getBoundingClientRect()
-    const x = (e.clientX - rect.left) / SCALE
-    const y = (e.clientY - rect.top) / SCALE
-    return { x, y }
-  }, [SCALE])
-
-  const onMouseDownSlot = (id, slot, pos) => (e) => {
-    if (!isEditMode) return
-    e.preventDefault()
-    e.stopPropagation()
-    const { x, y } = getSvgCoords(e)
-    setDragging({ kind: 'slot', id, slot, offsetX: x - pos.x, offsetY: y - pos.y })
-  }
-
-  // (tronco removido para semis no modo livre)
-
-  // Carregar campeonato atual e layout salvos no backend
-  useEffect(() => {
-    let abort = false
-    ;(async () => {
-      const camp = await getAtualCampeonato()
-      if (abort) return
-      if (camp?.idCampeonato != null) setCampeonatoId(camp.idCampeonato)
-      const remote = await getFinaisLayout(camp?.idCampeonato ?? null)
-      if (abort) return
-      if (remote && typeof remote === 'object' && Object.keys(remote).length > 0) {
-        setLayoutMap(remote)
-      }
-    })()
-    return () => { abort = true }
-  }, [])
-
-  // Salvar manualmente no backend
-  const saveRemote = useCallback(async () => {
-    setSaving(true)
-    await putFinaisLayout(campeonatoId, layoutMap)
-    setSaving(false)
-    setLastSavedAt(new Date())
-  }, [campeonatoId, layoutMap])
-
-  // Auto-save (debounced) quando habilitado
-  useEffect(() => {
-    if (!autoSave || campeonatoId == null) return
-    const t = setTimeout(() => { void saveRemote() }, 1000)
-    return () => clearTimeout(t)
-  }, [layoutMap, autoSave, campeonatoId, saveRemote])
-
-  useEffect(() => {
-    if (!dragging) return
-    const onMove = (e) => {
-      const { x, y } = getSvgCoords(e)
-      if (dragging.kind === 'slot') {
-        let nx = x - dragging.offsetX
-        let ny = y - dragging.offsetY
-        if (snapToGrid) {
-          nx = Math.round(nx / GRID_STEP) * GRID_STEP
-          ny = Math.round(ny / GRID_STEP) * GRID_STEP
-        } else {
-          nx = Math.round(nx)
-          ny = Math.round(ny)
-        }
-        setLayoutMap((prev) => {
-          const prevNode = prev?.[dragging.id] || {}
-          const prevSlots = prevNode.slots || {}
-          return {
-            ...prev,
-            [dragging.id]: {
-              ...prevNode,
-              slots: {
-                ...prevSlots,
-                [dragging.slot]: { x: nx, y: ny },
-              },
-            },
-          }
-        })
-      } else if (dragging.kind === 'from') {
-        let nx = x - dragging.offsetX
-        let ny = y - dragging.offsetY
-        if (snapToGrid) {
-          nx = Math.round(nx / GRID_STEP) * GRID_STEP
-          ny = Math.round(ny / GRID_STEP) * GRID_STEP
-        } else {
-          nx = Math.round(nx)
-          ny = Math.round(ny)
-        }
-        setLayoutMap((prev) => {
-          const prevNode = prev?.[dragging.fromId] || {}
-          const prevLinks = prevNode.links || {}
-          const link = prevLinks[dragging.key] || {}
-          return {
-            ...prev,
-            [dragging.fromId]: {
-              ...prevNode,
-              links: {
-                ...prevLinks,
-                [dragging.key]: {
-                  ...link,
-                  from: { x: nx, y: ny },
-                },
-              },
-            },
-          }
-        })
-      } else if (dragging.kind === 'point') {
-        let nx = x - dragging.offsetX
-        let ny = y - dragging.offsetY
-        if (snapToGrid) {
-          nx = Math.round(nx / GRID_STEP) * GRID_STEP
-          ny = Math.round(ny / GRID_STEP) * GRID_STEP
-        } else {
-          nx = Math.round(nx)
-          ny = Math.round(ny)
-        }
-        setLayoutMap((prev) => {
-          const prevNode = prev?.[dragging.fromId] || {}
-          const prevLinks = prevNode.links || {}
-          const link = prevLinks[dragging.key] || {}
-          const pts = Array.isArray(link.points) ? [...link.points] : []
-          pts[dragging.index] = { x: nx, y: ny }
-          return {
-            ...prev,
-            [dragging.fromId]: {
-              ...prevNode,
-              links: {
-                ...prevLinks,
-                [dragging.key]: {
-                  ...link,
-                  points: pts,
-                },
-              },
-            },
-          }
-        })
-      } else if (dragging.kind === 'to') {
-        let nx = x - dragging.offsetX
-        let ny = y - dragging.offsetY
-        if (snapToGrid) {
-          nx = Math.round(nx / GRID_STEP) * GRID_STEP
-          ny = Math.round(ny / GRID_STEP) * GRID_STEP
-        } else {
-          nx = Math.round(nx)
-          ny = Math.round(ny)
-        }
-        setLayoutMap((prev) => {
-          const prevNode = prev?.[dragging.fromId] || {}
-          const prevLinks = prevNode.links || {}
-          const link = prevLinks[dragging.key] || {}
-          return {
-            ...prev,
-            [dragging.fromId]: {
-              ...prevNode,
-              links: {
-                ...prevLinks,
-                [dragging.key]: {
-                  ...link,
-                  to: { x: nx, y: ny },
-                },
-              },
-            },
-          }
-        })
-      }
-    }
-    const onUp = () => setDragging(null)
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-    return () => {
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup', onUp)
-    }
-  }, [dragging, snapToGrid, getSvgCoords])
-
-  // exportar/importar preset
-  const exportPreset = () => {
-    const blob = new Blob([JSON.stringify(layoutMap, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'layoutFinais.json'
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-  const importPreset = (file) => {
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      try {
-        const json = JSON.parse(String(ev.target.result))
-        setLayoutMap(json)
-      } catch (e) {
-        console.error('Preset inválido', e)
-      }
-    }
-    reader.readAsText(file)
-  }
+  // Modo display apenas - desabilitar edição
+  const isEditMode = false
+  const isPathEditMode = false
+  const selectedLinkKey = ''
+  const snapToGrid = false
+  const showGrid = false
+  const GRID_STEP = 40
+  const getSvgCoords = () => ({ x: 0, y: 0 })
+  const setLayoutMap = () => {} // no-op
+  const setDragging = () => {} // no-op
+  const onMouseDownSlot = () => () => {} // no-op
   const CARD_W = 262 // largura efetiva do FinalsMatchCard (LEFT_PORT 22 + WIDTH 240)
   // Centro vertical do badge "VS" no FinalsMatchCard: HEIGHT(26) + GAP(6)/2 = 29
   const VS_CENTER_Y = 29
-  const PADDING_X = 60
-  let PADDING_Y = 60
-  const GAP_Y = 160 // distância vertical entre final e terceiro lugar
+  const PADDING_X = 40 // reduzido de 60
+  let PADDING_Y = 40 // reduzido de 60
+  const GAP_Y = 140 // reduzido de 160 - distância vertical entre final e terceiro lugar
   // Posição do brasão: 'top' (acima do card) ou 'center' (sobre o VS)
   const CREST_POS = 'top'
-  // Medidas do brasão (mantém proporção do componente)
-  const CREST_W = 220
+  // Medidas do brasão (reduzidas para caber melhor)
+  const CREST_W = 180 // reduzido de 220
   const CREST_H = Math.round(CREST_W * 1.2)
 
   // posições
@@ -1028,96 +827,8 @@ export default function Finais() {
   // Removida a placa central entre as semis (solicitado)
 
   return (
-    <div className="bg-neutral-900 text-white p-4 rounded space-y-3">
-      <h3 className="text-lg font-bold text-pink-400">Fase Finais</h3>
-
-      {/* toolbar edição */}
-      <div className="flex flex-wrap items-center gap-3 mb-2">
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={isEditMode} onChange={e => setIsEditMode(e.target.checked)} />
-          Modo edição (arrastar)
-        </label>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={isPathEditMode} onChange={e => setIsPathEditMode(e.target.checked)} disabled={!isEditMode} />
-          Editar caminhos (troncos)
-        </label>
-        {isEditMode && isPathEditMode && (
-          <div className="flex items-center gap-2 text-sm">
-            <span>Link selecionado:</span>
-            <select
-              className="bg-neutral-800 border border-neutral-700 rounded px-2 py-1 text-sm"
-              value={selectedLinkKey}
-              onChange={(e) => setSelectedLinkKey(e.target.value)}
-            >
-              <option value="">(nenhum)</option>
-              {semiL && finalJ && (<option value="L:final">Semifinal L → Final</option>)}
-              {semiR && finalJ && (<option value="R:final">Semifinal R → Final</option>)}
-              {semiL && third && (<option value="L:third">Semifinal L → 3º</option>)}
-              {semiR && third && (<option value="R:third">Semifinal R → 3º</option>)}
-            </select>
-            <button
-              className="px-2 py-1 rounded bg-neutral-700 hover:bg-neutral-600 text-sm"
-              onClick={() => {
-                if (!selectedLinkKey) return
-                const [side, dest] = selectedLinkKey.split(':')
-                const from = side === 'L' ? semiL : semiR
-                if (!from) return
-                const key = dest === 'final' ? 'toFinal' : 'toThird'
-                setLayoutMap(prev => {
-                  const prevNode = prev?.[from.id] || {}
-                  const prevLinks = prevNode.links || {}
-                  const link = prevLinks[key] || {}
-                  return {
-                    ...prev,
-                    [from.id]: {
-                      ...prevNode,
-                      links: {
-                        ...prevLinks,
-                        [key]: { ...link, points: [] },
-                      },
-                    },
-                  }
-                })
-              }}
-              disabled={!selectedLinkKey}
-            >
-              Limpar pontos
-            </button>
-            <span className="opacity-60">Clique no fundo para adicionar ponto</span>
-          </div>
-        )}
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={showGrid} onChange={e => setShowGrid(e.target.checked)} />
-          Mostrar grade (debug)
-        </label>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={snapToGrid} onChange={e => setSnapToGrid(e.target.checked)} />
-          Travar na grade
-        </label>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={autoSave} onChange={e => setAutoSave(e.target.checked)} />
-          Salvar automaticamente
-        </label>
-        <div className="flex items-center gap-2 text-sm">
-          <span>Zoom:</span>
-          <button className="px-2 py-0.5 bg-neutral-700 rounded" onClick={() => setSCALE(s => Math.max(0.5, Math.round((s-0.25)*100)/100))}>-</button>
-          <span className="min-w-[40px] text-center">{SCALE.toFixed(2)}x</span>
-          <button className="px-2 py-0.5 bg-neutral-700 rounded" onClick={() => setSCALE(s => Math.min(4, Math.round((s+0.25)*100)/100))}>+</button>
-        </div>
-  <button className="px-2 py-1 rounded bg-neutral-700 hover:bg-neutral-600 text-sm" onClick={exportPreset}>Salvar preset (download)</button>
-  <button className="px-2 py-1 rounded bg-neutral-700 hover:bg-neutral-600 text-sm" onClick={async () => { try { await navigator.clipboard.writeText(JSON.stringify(layoutMap, null, 2)); } catch(e){ console.warn('Clipboard indisponível', e) } }}>Copiar preset</button>
-        <label className="px-2 py-1 rounded bg-neutral-700 hover:bg-neutral-600 text-sm cursor-pointer">
-          Importar preset
-          <input type="file" accept="application/json" className="hidden" onChange={e => importPreset(e.target.files?.[0])} />
-        </label>
-        <button className="px-2 py-1 rounded bg-amber-700 hover:bg-amber-600 text-sm" onClick={saveRemote} disabled={saving}>
-          {saving ? 'Salvando…' : 'Salvar no servidor'}
-        </button>
-        {lastSavedAt && <span className="opacity-70 text-xs">Salvo às {lastSavedAt.toLocaleTimeString()}</span>}
-        <span className="opacity-70 text-xs">Escala: {SCALE}x</span>
-      </div>
-
-  <svg ref={svgRef} className="block" width={safeSW} height={safeSH} viewBox={`0 0 ${safeCW} ${safeCH}`}>
+    <div className="bg-neutral-900 text-white">
+      <svg ref={svgRef} className="block w-full h-auto" width={safeSW} height={safeSH} viewBox={`0 0 ${safeCW} ${safeCH}`}>
         <defs>
           <filter id="gold-glow" x="-50%" y="-50%" width="200%" height="200%">
             <feDropShadow dx="0" dy="0" stdDeviation="2" floodColor="#ff2b77" floodOpacity="0.6" />
@@ -1187,21 +898,7 @@ export default function Finais() {
         {isValidPos(posSemiR) && (isEditMode || showGrid) && (
           <text x={posSemiR.x} y={posSemiR.y - 28} className="fill-white/70 text-[10px]">ID {semiR?.id}</text>
         )}
-        {isValidPos(posFinal) && (() => {
-          const CREST_W = 220
-          const CREST_H = Math.round(CREST_W * 1.2)
-          const x = posFinal.x + (CARD_W / 2) - (CREST_W / 2)
-          const y = CREST_POS === 'center'
-            ? (posFinal.y + VS_CENTER_Y - (CREST_H / 2))
-            : (posFinal.y - (CREST_H + 12))
-          return (
-            <foreignObject x={x} y={y} width={CREST_W} height={CREST_H} overflow="visible">
-              <div xmlns="http://www.w3.org/1999/xhtml">
-                <FinalCrest width={CREST_W} title="FINAL" subtitle="LIGA AMIGOS DO FTV" variant="pink" />
-              </div>
-            </foreignObject>
-          )
-        })()}
+        {/* Brasão removido - antes mostrava FinalCrest acima da final */}
         {isValidPos(posFinal) && (isEditMode || showGrid) && (
           <text x={posFinal.x} y={posFinal.y - 28} className="fill-white/70 text-[10px]">ID {finalJ?.id}</text>
         )}
@@ -1215,7 +912,7 @@ export default function Finais() {
   <g filter="url(#gold-glow)">{lines}</g>
   {isEditMode && isPathEditMode && pointHandles}
         <text x={safeCW/2} y={safeCH - 12} textAnchor="middle" className="fill-white/70 tracking-widest" style={{fontSize: 12}}>
-          WORLD CHAMPIONSHIP
+          LIGA DOS AMIGOS
         </text>
 
         {/* boxes */}
@@ -1227,7 +924,7 @@ export default function Finais() {
               duplas={srcDuplas}
               x={0}
               y={0}
-              onClick={!isEditMode ? () => setModalJogo(semiL) : undefined}
+              onClick={() => setModalJogo(semiL)}
               onOpenFonte={(refId) => {
                 const src = jogos.find(j => j.id === refId)
                 if (src) setModalJogo(src)
@@ -1243,7 +940,7 @@ export default function Finais() {
               duplas={srcDuplas}
               x={0}
               y={0}
-              onClick={!isEditMode ? () => setModalJogo(semiR) : undefined}
+              onClick={() => setModalJogo(semiR)}
               onOpenFonte={(refId) => {
                 const src = jogos.find(j => j.id === refId)
                 if (src) setModalJogo(src)
@@ -1259,7 +956,7 @@ export default function Finais() {
               duplas={srcDuplas}
               x={0}
               y={0}
-              onClick={!isEditMode ? () => setModalJogo(finalJ) : undefined}
+              onClick={() => setModalJogo(finalJ)}
               onOpenFonte={(refId) => {
                 const src = jogos.find(j => j.id === refId)
                 if (src) setModalJogo(src)
@@ -1275,7 +972,7 @@ export default function Finais() {
               duplas={srcDuplas}
               x={0}
               y={0}
-              onClick={!isEditMode ? () => setModalJogo(third) : undefined}
+              onClick={() => setModalJogo(third)}
               onOpenFonte={(refId) => {
                 const src = jogos.find(j => j.id === refId)
                 if (src) setModalJogo(src)

@@ -41,6 +41,37 @@ export async function putFinaisLayout(campeonatoId, data) {
   }
 }
 
+export async function getClassificacaoLayout(campeonatoId) {
+  const url = new URL('/api/layout/classificacao', window.location.origin)
+  if (campeonatoId != null) url.searchParams.set('campeonatoId', String(campeonatoId))
+  try {
+    const res = await fetch(url.toString(), { credentials: 'include' })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const json = await res.json()
+    return json?.data ?? null
+  } catch (e) {
+    console.warn('Falha ao carregar layout classificação', e)
+    return null
+  }
+}
+
+export async function putClassificacaoLayout(campeonatoId, data) {
+  try {
+    const res = await fetch('/api/layout/classificacao', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ campeonatoId, data })
+    })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    const json = await res.json()
+    return json?.data ?? null
+  } catch (e) {
+    console.warn('Falha ao salvar layout classificação', e)
+    return null
+  }
+}
+
 // Auth
 export async function apiLogin(email, senha) {
   const res = await fetch('/api/user/login', {

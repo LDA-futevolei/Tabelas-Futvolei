@@ -6,6 +6,9 @@ import { gid } from './utils.js'
 export function montarFinais(jogosClass) {
   const uppers = jogosClass.filter(j => j.tipo === 'upper-final')
   const lowers = jogosClass.filter(j => j.tipo === 'lower-final')
+  
+  console.debug('[montarFinais] upper-finals:', uppers.map(j => ({ id: j.id, region: j.region })))
+  console.debug('[montarFinais] lower-finals:', lowers.map(j => ({ id: j.id, region: j.region })))
 
   // Tenta parear por região (L/R) quando possível
   const Lupper = uppers.find(j => j.region === 'L') || uppers[0] || null
@@ -13,6 +16,7 @@ export function montarFinais(jogosClass) {
   const Llower = lowers.find(j => j.region === 'L') || lowers[0] || null
   const Rlower = lowers.find(j => j.region === 'R') || (lowers.length > 1 ? lowers[1] : null)
 
+  console.debug('[montarFinais] Lupper:', Lupper?.id, 'Rupper:', Rupper?.id, 'Llower:', Llower?.id, 'Rlower:', Rlower?.id)
   const hasTwoSemis = !!(Lupper && Llower && Rupper && Rlower)
 
   if (hasTwoSemis) {
@@ -30,6 +34,7 @@ export function montarFinais(jogosClass) {
       ],
       tipo: 'semi'
     }
+    console.debug('[montarFinais] Semi L criada, fontes:', semi1.fontes)
 
     const semi2 = {
       id: gid(),

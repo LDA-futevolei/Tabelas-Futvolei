@@ -5,8 +5,26 @@ export default function MatchCard({ jogo, x, y, onClick, duplas = [], jogos = []
   const isHidden = jogo.skipRender
   const isPrelim = jogo.tipo === 'prelim'
   const isUpdated = jogo.justUpdated
-  const labelA = jogo.a != null ? resolveSlotLabel(jogo.a, jogo.fontes || [], duplas, 0, jogos) : resolveSlotLabel(null, jogo.fontes || [], duplas, 0, jogos)
-  const labelB = jogo.b != null ? resolveSlotLabel(jogo.b, jogo.fontes || [], duplas, 1, jogos) : resolveSlotLabel(null, jogo.fontes || [], duplas, 1, jogos)
+  const fonteList = Array.isArray(jogo?.fontes) ? jogo.fontes : []
+  const f0 = fonteList[0]
+  const f1 = fonteList[1]
+  // Preferir placeholder quando a fonte é 'from' e o JOGO DE ORIGEM ainda não tem vencedor
+  const getSrc = (f) => {
+    if (!f || f.type !== 'from' || f.ref == null) return null
+    return (Array.isArray(jogos) ? jogos.find(j => j.id === f.ref) : null) || null
+  }
+  const srcA = getSrc(f0)
+  const srcB = getSrc(f1)
+  // Se a fonte é 'from' e o jogo de origem NÃO tem vencedor, forçar placeholder
+  const preferFonteA = f0 && f0.type === 'from' && (!srcA || srcA.vencedor == null)
+  const preferFonteB = f1 && f1.type === 'from' && (!srcB || srcB.vencedor == null)
+  // SEMPRE passar null quando fonte está pendente, mesmo se jogo.a/b já tem valor
+  const labelA = preferFonteA
+    ? resolveSlotLabel(null, fonteList, duplas, 0, jogos)
+    : resolveSlotLabel(jogo?.a ?? null, fonteList, duplas, 0, jogos)
+  const labelB = preferFonteB
+    ? resolveSlotLabel(null, fonteList, duplas, 1, jogos)
+    : resolveSlotLabel(jogo?.b ?? null, fonteList, duplas, 1, jogos)
 
   // produce clipPath ids unique per jogo
   const clipId = `match-clippath-${jogo.id}`
@@ -15,10 +33,15 @@ export default function MatchCard({ jogo, x, y, onClick, duplas = [], jogos = []
   const scoreA = (typeof sourceMatch.placarA !== 'undefined' && sourceMatch.placarA != null) ? String(sourceMatch.placarA) : ''
   const scoreB = (typeof sourceMatch.placarB !== 'undefined' && sourceMatch.placarB != null) ? String(sourceMatch.placarB) : ''
   const vencedorVal = (typeof sourceMatch.vencedor !== 'undefined' && sourceMatch.vencedor != null) ? sourceMatch.vencedor : null
-  const aSeedVal = typeof sourceMatch.a !== 'undefined' ? sourceMatch.a : null
-  const bSeedVal = typeof sourceMatch.b !== 'undefined' ? sourceMatch.b : null
+  // Para determinar winner/loser visual, IGNORAR jogo.a/b quando fonte está pendente
+  const aSeedVal = preferFonteA ? null : (typeof sourceMatch.a !== 'undefined' ? sourceMatch.a : null)
+  const bSeedVal = preferFonteB ? null : (typeof sourceMatch.b !== 'undefined' ? sourceMatch.b : null)
   const isWinnerA = vencedorVal != null && aSeedVal != null && vencedorVal === aSeedVal
   const isWinnerB = vencedorVal != null && bSeedVal != null && vencedorVal === bSeedVal
+
+  // NUNCA mostrar seed quando a fonte está pendente (mesmo se jogo.a/b tiver valor)
+  const showSeedA = !preferFonteA && (typeof jogo?.a === 'number')
+  const showSeedB = !preferFonteB && (typeof jogo?.b === 'number')
 
   return (
     <g transform={`translate(${x}, ${y})`} onClick={onClick} style={{ cursor: 'pointer' }} className={`match ${isHidden ? '-pending' : ''} ${isPrelim ? 'match--prelim' : ''} ${isUpdated ? 'match--updated' : ''}`} data-identifier={jogo.id}>
@@ -34,7 +57,7 @@ export default function MatchCard({ jogo, x, y, onClick, duplas = [], jogos = []
           <title>{labelA}</title>
           <path d="M 50 0 h 147 v 22 h -147 Z" className={`match--player-background ${labelA ? '' : '-empty'}`} />
           <path d="M 26 0 h 24 v 22 h -24 Z" className="match--seed-background" />
-          <text x="38" y="14" textAnchor="middle" className="match--seed">{typeof jogo.a === 'number' ? jogo.a : ''}</text>
+          <text x="38" y="14" textAnchor="middle" className="match--seed">{showSeedA ? jogo.a : ''}</text>
           <text x="55" y="15" className={`match--player-name ${labelA ? '' : '-placeholder'}`} textAnchor="start">{labelA}</text>
           {/* score value only — no background rect */}
           {scoreA ? <text x="212" y="11" textAnchor="middle" dominantBaseline="middle" className={`match--score-text ${isWinnerA? 'match--score-text--winner':''} ${(!isWinnerA && vencedorVal!=null)? 'match--score-text--loser':''}`} style={{pointerEvents:'none'}}>{scoreA}</text> : null}
@@ -43,7 +66,7 @@ export default function MatchCard({ jogo, x, y, onClick, duplas = [], jogos = []
           <title>{labelB}</title>
           <path d="M 50 0 h 147 v 22 h -147 Z" className={`match--player-background ${labelB ? '' : '-empty'}`} />
           <path d="M 26 0 h 24 v 22 h -24 Z" className="match--seed-background" />
-          <text x="38" y="14" textAnchor="middle" className="match--seed">{typeof jogo.b === 'number' ? jogo.b : ''}</text>
+          <text x="38" y="14" textAnchor="middle" className="match--seed">{showSeedB ? jogo.b : ''}</text>
           <text x="55" y="15" className={`match--player-name ${labelB ? '' : '-placeholder'}`} textAnchor="start">{labelB}</text>
           <line x1="26" y1="-0.5" x2="200" y2="-0.5" className="match--player-divider" />
           {/* score value only — no background rect */}
