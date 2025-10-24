@@ -22,9 +22,17 @@ export default function LoginForm() {
             if (res.status == 200) {
                 window.location = "/dashboard";
             } else {
-                const body = await res.json();
+                let body = null;
+                try {
+                    body = await res.json();
+                } catch {
+                    // resposta não-JSON (ex.: HTML de erro de proxy/nginx)
+                }
                 console.log(body);
-                setErros(body.erros);
+                const msgs = (body && Array.isArray(body.erros) && body.erros.length>0)
+                    ? body.erros
+                    : ["Falha ao efetuar login. Tente novamente."];
+                setErros(msgs);
             }
         } catch (err) {
             console.log(err);
