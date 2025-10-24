@@ -28,8 +28,8 @@ export default function Finais() {
 
   // Layout base simplificado para visualização
   const SCALE = 2
-  let CANVAS_W = 900
-  let CANVAS_H = 480
+  let CANVAS_W = 1000  // aumentado de 900
+  let CANVAS_H = 550   // aumentado de 480
   let SVG_W = CANVAS_W * SCALE
   let SVG_H = CANVAS_H * SCALE
 
@@ -51,9 +51,9 @@ export default function Finais() {
   const CARD_W = 262 // largura efetiva do FinalsMatchCard (LEFT_PORT 22 + WIDTH 240)
   // Centro vertical do badge "VS" no FinalsMatchCard: HEIGHT(26) + GAP(6)/2 = 29
   const VS_CENTER_Y = 29
-  const PADDING_X = 40 // reduzido de 60
-  let PADDING_Y = 40 // reduzido de 60
-  const GAP_Y = 140 // reduzido de 160 - distância vertical entre final e terceiro lugar
+  const PADDING_X = 50  // aumentado de 40
+  let PADDING_Y = 80    // aumentado para dar espaço ao troféu
+  const GAP_Y = 140     // reduzido de 160 - distância vertical entre final e terceiro lugar
   // Posição do brasão: 'top' (acima do card) ou 'center' (sobre o VS)
   const CREST_POS = 'top'
   // Medidas do brasão (reduzidas para caber melhor)
@@ -898,7 +898,26 @@ export default function Finais() {
         {isValidPos(posSemiR) && (isEditMode || showGrid) && (
           <text x={posSemiR.x} y={posSemiR.y - 28} className="fill-white/70 text-[10px]">ID {semiR?.id}</text>
         )}
-        {/* Brasão removido - antes mostrava FinalCrest acima da final */}
+        {/* Troféu acima da final */}
+        {isValidPos(posFinal) && (
+          <g transform={`translate(${posFinal.x + CARD_W/2}, ${posFinal.y - 120})`}>
+            {/* Imagem do troféu */}
+            <image 
+              href="https://cdn-icons-png.flaticon.com/512/3784/3784947.png"
+              x="-50"
+              y="-70"
+              width="100"
+              height="100"
+              style={{ filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.5))' }}
+            />
+            
+            {/* Texto "CAMPEÃO" */}
+            <text x="0" y="50" textAnchor="middle" className="fill-white" 
+                  style={{ fontSize: 16, fontWeight: 900, letterSpacing: '2px', textShadow: '0 0 10px #ff2b77, 0 2px 4px rgba(0,0,0,0.8)' }}>
+              CAMPEÃO
+            </text>
+          </g>
+        )}
         {isValidPos(posFinal) && (isEditMode || showGrid) && (
           <text x={posFinal.x} y={posFinal.y - 28} className="fill-white/70 text-[10px]">ID {finalJ?.id}</text>
         )}
