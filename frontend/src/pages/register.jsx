@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 export default function RegisterForm() {
@@ -9,13 +9,37 @@ export default function RegisterForm() {
     const [erros, setErros] = useState([]);
     const [loading, setLoading] = useState(false);
 
+    const _checkLogin = async () => {
+        try {
+            const res = await fetch("/api/user/profile", {
+                method: "GET",
+                mode: "cors",
+                credentials: "include",
+                headers: {
+                    "Content-Type": "application/json"
+                }
+            });
+
+            if (res.status != 200) {
+                throw new Error("User not logged in!")
+            }
+        } catch {
+            window.location.href = "/dashboard/login";
+        }
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         setErros([]);
+
+        if (senha.length < 6 || senha.length > 12) {
+            return setErros(["Sua senha deve ter entre 6 a 12 carateres!"]);
+        }
+
         setLoading(true);
 
         try {
-            const res = await fetch("/api/user/signup", {
+            const res = await fetch("/api/user/register", {
                 method: "POST",
                 body: JSON.stringify({ nome, email, senha }),
                 mode: "cors",
@@ -31,15 +55,18 @@ export default function RegisterForm() {
                 navigate("/dashboard/login");
             } else {
                 let body = null;
+
                 try {
                     body = await res.json();
+
+                    const msgs = (body && Array.isArray(body.erros) && body.erros.length > 0)
+                        ? body.erros
+                        : ["Falha ao efetuar cadastro. Tente novamente."];
+
+                    setErros(msgs);
                 } catch {
-                    // resposta não-JSON
+                    setErros(["JSON inválido!"]);
                 }
-                const msgs = (body && Array.isArray(body.erros) && body.erros.length > 0)
-                    ? body.erros
-                    : ["Falha ao efetuar cadastro. Tente novamente."];
-                setErros(msgs);
             }
         } catch (err) {
             console.error(err);
@@ -48,6 +75,10 @@ export default function RegisterForm() {
             setLoading(false);
         }
     };
+
+    useEffect(() => {
+        // _checkLogin();
+    }, []);
 
     return (
         <div className="h-screen w-screen flex items-center justify-center bg-gray-100">
@@ -72,7 +103,7 @@ export default function RegisterForm() {
                         placeholder="Seu nome completo"
                         value={nome}
                         onChange={(e) => setNome(e.target.value)}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 bg-gray-50"
+                        className="text-gray-800 w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 bg-gray-50"
                         required
                     />
                 </div>
@@ -90,7 +121,7 @@ export default function RegisterForm() {
                         placeholder="exemplo@email.com"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 bg-gray-50"
+                        className="text-gray-800 w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 bg-gray-50 "
                         required
                     />
                 </div>
@@ -108,20 +139,19 @@ export default function RegisterForm() {
                         placeholder="Mínimo 6 caracteres"
                         value={senha}
                         onChange={(e) => setSenha(e.target.value)}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 bg-gray-50"
-                        required
+                        className="text-gray-800 w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-pink-500 bg-gray-50"
                         minLength={6}
+                        required
                     />
                 </div>
 
                 <button
                     type="submit"
                     disabled={loading}
-                    className={`w-full font-semibold py-2 rounded-lg transition duration-200 ${
-                        loading
+                    className={`w-full font-semibold py-2 rounded-lg transition duration-200 ${loading
                             ? "bg-gray-400 cursor-not-allowed"
                             : "bg-pink-600 hover:bg-pink-700 text-white"
-                    }`}
+                        }`}
                 >
                     {loading ? "Cadastrando..." : "Criar Conta"}
                 </button>

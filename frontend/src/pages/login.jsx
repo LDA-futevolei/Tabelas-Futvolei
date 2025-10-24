@@ -25,14 +25,15 @@ export default function LoginForm() {
                 let body = null;
                 try {
                     body = await res.json();
+
+                    const msgs = (body && Array.isArray(body.erros) && body.erros.length > 0)
+                        ? body.erros
+                        : ["Falha ao efetuar login. Tente novamente."];
+
+                    setErros(msgs);
                 } catch {
-                    // resposta não-JSON (ex.: HTML de erro de proxy/nginx)
+                    setErros(["JSON inválido!"]);
                 }
-                console.log(body);
-                const msgs = (body && Array.isArray(body.erros) && body.erros.length>0)
-                    ? body.erros
-                    : ["Falha ao efetuar login. Tente novamente."];
-                setErros(msgs);
             }
         } catch (err) {
             console.log(err);
