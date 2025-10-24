@@ -4,6 +4,7 @@ import ReactDOM from 'react-dom/client'
 
 import App from './App.jsx'
 import LoginForm from './pages/login.jsx';
+import RegisterForm from './pages/register.jsx';
 import NotFound from './pages/404.jsx';
 
 import './styles/index.css'
@@ -20,6 +21,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 
                 <Route path='/dashboard' element={<Dashboard />}></Route>
                 <Route path='/dashboard/login' element={<LoginForm />}></Route>
+                <Route path='/dashboard/register' element={<RegisterForm />}></Route>
 
                 <Route path='/tabela' element={<Tabela />}></Route>
                 <Route path='/setup' element={<Setup />}></Route>

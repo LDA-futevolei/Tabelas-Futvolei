@@ -93,9 +93,9 @@ export default function LoginForm() {
                 </button>
 
                 <p className="text-center text-sm text-gray-500 mt-4">
-                    Esqueceu sua senha?{" "}
-                    <a href="/dashboard/forgot-password" className="text-blue-600 hover:underline">
-                        Recuperar
+                    Não tem uma conta?{" "}
+                    <a href="/dashboard/register" className="text-blue-600 hover:underline">
+                        Criar conta
                     </a>
                 </p>
 
