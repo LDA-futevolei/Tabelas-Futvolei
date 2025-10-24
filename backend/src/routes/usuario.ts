@@ -149,3 +149,66 @@ UserRouter.get('/profile', IsAuth, async (req, res) => {
 		data: req.session.user
 	});
 });
+
+// Auto-registro público (cria usuário comum, não admin)
+UserRouter.post('/signup', async (req, res) => {
+	const body: IUserCadDTO = req.body ?? {};
+	const erros = [];
+
+	if (!body.email) {
+		erros.push('É necessário prover um email!');
+	}
+
+	if (!body.senha) {
+		erros.push('É necessário prover uma senha!');
+	}
+
+	if (!body.nome) {
+		erros.push('É necessário prover um nome!');
+	}
+
+	// Checagem de erros de corpo
+	if (erros.length > 0) {
+		return res.status(400).json({
+			erros,
+		});
+	}
+
+	try {
+		const client = new PrismaClient();
+
+		// Verifica se existe um usuario com esse email
+		let user = await client.usuario.findUnique({
+			where: {
+				email: body.email,
+			},
+		});
+
+		if (user != null) {
+			return res.status(400).json({
+				erros: ['Esse email já foi usado por outro usuário!'],
+			});
+		}
+
+		// Criptografa a senha
+		const hash = UserModel.HashPassword(body.senha);
+
+		// Cadastra o usuário como não-admin
+		await client.usuario.create({
+			data: {
+				nome: body.nome,
+				email: body.email,
+				senha: hash,
+				isAdmin: false,
+			},
+		});
+
+		res.sendStatus(200);
+	} catch (err) {
+		res.status(500).json({
+			erros: [
+				'Não foi possível efetuar o cadastro devido a um erro no servidor. Tente novamente mais tarde!',
+			],
+		});
+	}
+});

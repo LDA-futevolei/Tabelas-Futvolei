@@ -22,9 +22,17 @@ export default function LoginForm() {
             if (res.status == 200) {
                 window.location = "/dashboard";
             } else {
-                const body = await res.json();
+                let body = null;
+                try {
+                    body = await res.json();
+                } catch {
+                    // resposta não-JSON (ex.: HTML de erro de proxy/nginx)
+                }
                 console.log(body);
-                setErros(body.erros);
+                const msgs = (body && Array.isArray(body.erros) && body.erros.length>0)
+                    ? body.erros
+                    : ["Falha ao efetuar login. Tente novamente."];
+                setErros(msgs);
             }
         } catch (err) {
             console.log(err);
@@ -85,9 +93,9 @@ export default function LoginForm() {
                 </button>
 
                 <p className="text-center text-sm text-gray-500 mt-4">
-                    Esqueceu sua senha?{" "}
-                    <a href="/dashboard/forgot-password" className="text-blue-600 hover:underline">
-                        Recuperar
+                    Não tem uma conta?{" "}
+                    <a href="/dashboard/register" className="text-blue-600 hover:underline">
+                        Criar conta
                     </a>
                 </p>
 

@@ -11,3 +11,20 @@ export function pairwise(arr) {
 let __gid = 1
 export function gid() { return __gid++ }
 export function resetIds(start = 1) { __gid = start }
+
+// Baixa um objeto como arquivo JSON no navegador
+export function downloadJSON(data, filename = 'dados.json') {
+  try {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+  } catch (e) {
+    console.warn('Falha ao baixar JSON', e)
+  }
+}

@@ -1,8 +1,9 @@
-import React, { useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Participants from '../components/Participants'
 import { useBracketStore } from '../store/useBracketStore'
 import { putClassificacaoLayout, putFinaisLayout, getAtualCampeonato } from '../logic/api'
+import { downloadJSON } from '../logic/utils'
 import BracketSVG from '../components/BracketSVG'
 import Finais from '../components/Finais'
 import ConfigPanel from '../components/ConfigPanel'
@@ -18,6 +19,8 @@ export default function Setup() {
   
   const [saving, setSaving] = useState(false)
   const [saveMessage, setSaveMessage] = useState('')
+
+  const canExport = useMemo(() => (participants?.length || 0) > 0 || (jogos?.length || 0) > 0, [participants, jogos])
 
   const handleSave = async () => {
     setSaving(true)
@@ -50,6 +53,17 @@ export default function Setup() {
     } finally {
       setSaving(false)
     }
+  }
+
+  const handleExportJSON = () => {
+    const payload = {
+      generatedAt: new Date().toISOString(),
+      faseAtual,
+      participants,
+      jogos,
+    }
+    const name = `torneio-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.json`
+    downloadJSON(payload, name)
   }
 
   return (
@@ -99,10 +113,10 @@ export default function Setup() {
           </section>
         )}
 
-        {/* Botão de salvar */}
+        {/* Botão de salvar e Exportar JSON */}
         <section className="bg-neutral-900 text-white p-4 rounded space-y-3 border border-pink-600">
           <h3 className="text-lg font-bold text-pink-400">Salvar Torneio</h3>
-          <p className="text-sm text-neutral-300">Salve o torneio atual (participantes, classificação e finais) no banco de dados.</p>
+          <p className="text-sm text-neutral-300">Salve o torneio atual (participantes, classificação e finais) no banco de dados ou exporte um arquivo JSON para importar depois.</p>
           <div className="flex items-center gap-3">
             <button
               onClick={handleSave}
@@ -114,6 +128,17 @@ export default function Setup() {
               }`}
             >
               {saving ? 'Salvando...' : '💾 Salvar Torneio'}
+            </button>
+            <button
+              onClick={handleExportJSON}
+              disabled={!canExport}
+              className={`px-4 py-2 rounded font-semibold ${
+                !canExport
+                  ? 'bg-neutral-700 text-neutral-500 cursor-not-allowed'
+                  : 'bg-neutral-800 hover:bg-neutral-700'
+              }`}
+            >
+              ⬇️ Exportar JSON
             </button>
             {saveMessage && <span className="text-sm">{saveMessage}</span>}
           </div>
