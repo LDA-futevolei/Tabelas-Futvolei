@@ -17,6 +17,9 @@ export const routes = express.Router();
 // Defina um segredo válido para a sessão. Evita o warning "req.secret; provide secret option"
 const SECRET = (process.env.SESSION_SECRET?.trim() || process.env.SECRET?.trim() || 'dev-session-secret');
 
+// Detecta se está em produção (HTTPS)
+const isProduction = process.env.NODE_ENV === 'production';
+
 // SESSÃO
 routes.use(
 	session({
@@ -25,10 +28,10 @@ routes.use(
 		saveUninitialized: false,
 		resave: false,
 		cookie: {
-			maxAge: 1000 * 60 * 60 * 2,
-			secure: false,
+			maxAge: 1000 * 60 * 60 * 2, // 2 horas
+			secure: isProduction, // true em produção (HTTPS), false em desenvolvimento
 			httpOnly: true,
-			sameSite: 'lax',
+			sameSite: isProduction ? 'none' : 'lax', // 'none' necessário para CORS em produção
 		},
 	})
 );

@@ -21,8 +21,12 @@ export default function Participants({ onAfterGenerate } = {}) {
   const onBulk = () => {
     const lines = bulk.split(/\r?\n/).map(l => l.trim()).filter(Boolean)
     if (lines.length === 0) return
+    // adiciona participantes
     bulkAddDuplas(lines)
     setBulk('')
+    // gera automaticamente a tabela e navega para a aba de chaves
+    gerarClassificatoria({ prelim: true })
+    if (typeof onAfterGenerate === 'function') onAfterGenerate()
   }
 
   return (
@@ -35,9 +39,9 @@ export default function Participants({ onAfterGenerate } = {}) {
 
       <div>
         <label className="text-sm">Bulk add (uma linha por participante)</label>
-  <textarea value={bulk} onChange={e => setBulk(e.target.value)} className="w-full p-2 rounded bg-gray-800 mt-1" rows={4} placeholder={`Adicione os participantes`} />
-        <div className="flex justify-end mt-2">
-          <button onClick={onBulk} className="px-3 py-2 bg-pink-600 rounded">Adicionar em massa</button>
+        <textarea value={bulk} onChange={e => setBulk(e.target.value)} className="w-full p-2 rounded bg-gray-800 mt-1" rows={4} placeholder={`Adicione os participantes`} />
+        <div className="flex justify-end mt-2 gap-2">
+          <button onClick={onBulk} className="px-3 py-2 bg-pink-600 rounded">Adicionar participantes</button>
         </div>
       </div>
 
